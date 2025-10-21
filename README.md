@@ -1,0 +1,2 @@
+# Project-Snapshotter
+A Python utility that recursively scans a project directory and consolidates all text-based files into a single, formatted .txt file. It intelligently respects .gitignore rules (or custom exclusions) to skip binaries, node_modules, and other non-essential files. The output is ideal for creating a complete project context for easy sharing, review, or feeding into Large Language Models (LLMs).
