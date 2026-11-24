@@ -13,7 +13,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 from typing import List, Optional
 
-
 # ============================================================
 # فونت‌ها و پالت رنگ
 # ============================================================
@@ -30,40 +29,40 @@ else:
 
 PALETTES = {
     "light": {
-        "bg":           "#f2f3f5",
-        "header":       "#ffffff",
-        "card":         "#ffffff",
-        "border":       "#dcdfe4",
-        "text":         "#1d1d1f",
-        "muted":        "#6b7280",
-        "accent":       "#0071e3",
+        "bg": "#f2f3f5",
+        "header": "#ffffff",
+        "card": "#ffffff",
+        "border": "#dcdfe4",
+        "text": "#1d1d1f",
+        "muted": "#6b7280",
+        "accent": "#0071e3",
         "accent_hover": "#0077ed",
-        "accent_fg":    "#ffffff",
-        "input_bg":     "#fafbfc",
-        "log_bg":       "#fafbfc",
-        "log_fg":       "#24292f",
-        "success":      "#16a34a",
-        "warn":         "#d97706",
-        "error":        "#dc2626",
-        "scrollbar":    "#c1c5cc",
+        "accent_fg": "#ffffff",
+        "input_bg": "#fafbfc",
+        "log_bg": "#fafbfc",
+        "log_fg": "#24292f",
+        "success": "#16a34a",
+        "warn": "#d97706",
+        "error": "#dc2626",
+        "scrollbar": "#c1c5cc",
     },
     "dark": {
-        "bg":           "#1b1c1f",
-        "header":       "#232428",
-        "card":         "#2a2b30",
-        "border":       "#3a3b40",
-        "text":         "#e6e7ea",
-        "muted":        "#9a9ba0",
-        "accent":       "#0a84ff",
+        "bg": "#1b1c1f",
+        "header": "#232428",
+        "card": "#2a2b30",
+        "border": "#3a3b40",
+        "text": "#e6e7ea",
+        "muted": "#9a9ba0",
+        "accent": "#0a84ff",
         "accent_hover": "#3d9dff",
-        "accent_fg":    "#ffffff",
-        "input_bg":     "#202126",
-        "log_bg":       "#16171a",
-        "log_fg":       "#d4d6db",
-        "success":      "#30d158",
-        "warn":         "#ffb020",
-        "error":        "#ff453a",
-        "scrollbar":    "#4a4b50",
+        "accent_fg": "#ffffff",
+        "input_bg": "#202126",
+        "log_bg": "#16171a",
+        "log_fg": "#d4d6db",
+        "success": "#30d158",
+        "warn": "#ffb020",
+        "error": "#ff453a",
+        "scrollbar": "#4a4b50",
     },
 }
 
@@ -73,9 +72,11 @@ def detect_system_theme() -> str:
     try:
         if sys.platform.startswith("win"):
             import winreg
+
             key = winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            )
             value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
             return "light" if value else "dark"
     except Exception:
@@ -87,9 +88,9 @@ def detect_system_theme() -> str:
 # موتور .gitignore سازگار با Git
 # ============================================================
 
+
 class GitIgnorePattern:
-    __slots__ = ("original", "negation", "directory_only",
-                 "anchored", "regex", "valid")
+    __slots__ = ("original", "negation", "directory_only", "anchored", "regex", "valid")
 
     def __init__(self, line: str):
         self.original = line
@@ -103,24 +104,29 @@ class GitIgnorePattern:
     def _compile(self, line: str):
         p = line
         if not p or p.startswith("#"):
-            self.valid = False; return
+            self.valid = False
+            return
         if p.startswith("!"):
-            self.negation = True; p = p[1:]
+            self.negation = True
+            p = p[1:]
         elif p.startswith("\\!") or p.startswith("\\#"):
             p = p[1:]
 
         p = self._rstrip_unescaped_spaces(p)
         if not p:
-            self.valid = False; return
+            self.valid = False
+            return
 
         if p.endswith("/"):
             self.directory_only = True
             p = p[:-1]
             if not p:
-                self.valid = False; return
+                self.valid = False
+                return
 
         if p.startswith("/"):
-            self.anchored = True; p = p[1:]
+            self.anchored = True
+            p = p[1:]
         elif "/" in p:
             self.anchored = True
 
@@ -138,7 +144,8 @@ class GitIgnorePattern:
         while p.endswith(" "):
             j, bs = len(p) - 2, 0
             while j >= 0 and p[j] == "\\":
-                bs += 1; j -= 1
+                bs += 1
+                j -= 1
             if bs % 2 == 1:
                 break
             p = p[:-1]
@@ -152,15 +159,20 @@ class GitIgnorePattern:
             if c == "*":
                 if i + 1 < n and p[i + 1] == "*":
                     if i + 2 < n and p[i + 2] == "/":
-                        out.append("(?:.*/)?"); i += 3
+                        out.append("(?:.*/)?")
+                        i += 3
                     elif i + 2 == n:
-                        out.append(".*"); i += 2
+                        out.append(".*")
+                        i += 2
                     else:
-                        out.append("[^/]*"); i += 2
+                        out.append("[^/]*")
+                        i += 2
                 else:
-                    out.append("[^/]*"); i += 1
+                    out.append("[^/]*")
+                    i += 1
             elif c == "?":
-                out.append("[^/]"); i += 1
+                out.append("[^/]")
+                i += 1
             elif c == "[":
                 j = i + 1
                 if j < n and p[j] in ("!", "^"):
@@ -170,19 +182,24 @@ class GitIgnorePattern:
                 while j < n and p[j] != "]":
                     j += 1
                 if j >= n:
-                    out.append(re.escape(c)); i += 1
+                    out.append(re.escape(c))
+                    i += 1
                 else:
-                    inner = p[i + 1:j]
+                    inner = p[i + 1 : j]
                     if inner.startswith("!"):
                         inner = "^" + inner[1:]
-                    out.append("[" + inner + "]"); i = j + 1
+                    out.append("[" + inner + "]")
+                    i = j + 1
             elif c == "\\":
                 if i + 1 < n:
-                    out.append(re.escape(p[i + 1])); i += 2
+                    out.append(re.escape(p[i + 1]))
+                    i += 2
                 else:
-                    out.append(re.escape(c)); i += 1
+                    out.append(re.escape(c))
+                    i += 1
             else:
-                out.append(re.escape(c)); i += 1
+                out.append(re.escape(c))
+                i += 1
         return "".join(out)
 
     def matches(self, rel_path: str, is_dir: bool) -> bool:
@@ -229,23 +246,36 @@ class GitIgnoreMatcher:
 
 def build_default_matcher() -> GitIgnoreMatcher:
     defaults = [
-        ".git/", "node_modules/", "__pycache__/", "*.pyc", "*.tmp",
-        "venv/", ".venv/", ".vscode/", ".idea/", "dist/", "build/",
+        ".git/",
+        "node_modules/",
+        "__pycache__/",
+        "*.pyc",
+        "*.tmp",
+        "venv/",
+        ".venv/",
+        ".vscode/",
+        ".idea/",
+        "dist/",
+        "build/",
         ".DS_Store",
     ]
     return GitIgnoreMatcher(
-        [r for r in (GitIgnorePattern(l) for l in defaults) if r.valid])
+        [r for r in (GitIgnorePattern(l) for l in defaults) if r.valid]
+    )
 
 
 # ============================================================
 # منطق ساخت اسنپ‌شات
 # ============================================================
 
-def create_snapshot(root_dir: str,
-                    include_gitignore: bool,
-                    extra_patterns: List[str],
-                    output_file_path: str,
-                    log_func=print) -> bool:
+
+def create_snapshot(
+    root_dir: str,
+    include_gitignore: bool,
+    extra_patterns: List[str],
+    output_file_path: str,
+    log_func=print,
+) -> bool:
     output_abs = os.path.abspath(output_file_path)
     base = build_default_matcher()
     manual = [r for r in (GitIgnorePattern(l) for l in extra_patterns) if r.valid]
@@ -283,13 +313,15 @@ def create_snapshot(root_dir: str,
             try:
                 is_dir = entry.is_dir()
             except OSError:
-                stats["skipped"] += 1; continue
+                stats["skipped"] += 1
+                continue
 
             if not is_dir and os.path.abspath(full) == output_abs:
                 continue
 
             if current.is_ignored(rel, is_dir):
-                stats["skipped"] += 1; continue
+                stats["skipped"] += 1
+                continue
 
             if is_dir:
                 walk(full, rel, current)
@@ -316,8 +348,11 @@ def create_snapshot(root_dir: str,
     try:
         with open(output_file_path, "w", encoding="utf-8") as f:
             f.write("".join(all_contents))
-        log_func(f"✅ تمام شد! {stats['processed']} فایل نوشته شد، "
-                 f"{stats['skipped']} مورد رد شد.", "success")
+        log_func(
+            f"✅ تمام شد! {stats['processed']} فایل نوشته شد، "
+            f"{stats['skipped']} مورد رد شد.",
+            "success",
+        )
         log_func(f"📁 خروجی: {output_file_path}", "success")
         return True
     except Exception as e:
@@ -328,6 +363,7 @@ def create_snapshot(root_dir: str,
 # ============================================================
 # رابط گرافیکی
 # ============================================================
+
 
 class SnapshotApp:
     def __init__(self, root: tk.Tk):
@@ -362,21 +398,27 @@ class SnapshotApp:
         title_box._role = "header"
         title_box.pack(side=tk.LEFT, padx=20, pady=10)
 
-        self.title_lbl = tk.Label(title_box, text="📸  Project Snapshotter",
-                                  font=(FONT_UI, 15, "bold"))
+        self.title_lbl = tk.Label(
+            title_box, text="📸  Project Snapshotter", font=(FONT_UI, 15, "bold")
+        )
         self.title_lbl._role = "title"
         self.title_lbl.pack(anchor=tk.W)
 
         self.subtitle_lbl = tk.Label(
-            title_box, text="اسنپ‌شات از فایل‌های متنی پروژه",
-            font=(FONT_UI, 9))
+            title_box, text="اسنپ‌شات از فایل‌های متنی پروژه", font=(FONT_UI, 9)
+        )
         self.subtitle_lbl._role = "subtitle"
         self.subtitle_lbl.pack(anchor=tk.W)
 
         # دکمه تم
-        self.theme_btn = tk.Label(self.header, text=self._theme_btn_text(),
-                                  font=(FONT_UI, 10), padx=14, pady=6,
-                                  cursor="hand2")
+        self.theme_btn = tk.Label(
+            self.header,
+            text=self._theme_btn_text(),
+            font=(FONT_UI, 10),
+            padx=14,
+            pady=6,
+            cursor="hand2",
+        )
         self.theme_btn._role = "ghost_btn"
         self.theme_btn.pack(side=tk.RIGHT, padx=20)
         self.theme_btn.bind("<Button-1>", lambda e: self._toggle_theme())
@@ -417,43 +459,55 @@ class SnapshotApp:
         inner.pack(fill=tk.X, padx=16, pady=14)
 
         # --- مسیر پروژه ---
-        lbl = tk.Label(inner, text="مسیر پروژه",
-                       font=(FONT_UI, 9, "bold"), anchor=tk.W)
+        lbl = tk.Label(inner, text="مسیر پروژه", font=(FONT_UI, 9, "bold"), anchor=tk.W)
         lbl._role = "card_title"
         lbl.pack(fill=tk.X, pady=(0, 4))
 
-        row = tk.Frame(inner); row._role = "card"
+        row = tk.Frame(inner)
+        row._role = "card"
         row.pack(fill=tk.X)
         self.project_var = tk.StringVar()
-        self.project_entry = ttk.Entry(row, textvariable=self.project_var,
-                                       font=(FONT_UI, 10))
+        self.project_entry = ttk.Entry(
+            row, textvariable=self.project_var, font=(FONT_UI, 10)
+        )
         self.project_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.browse_btn1 = ttk.Button(row, text="انتخاب پوشه",
-                                       style="Secondary.TButton",
-                                       command=self._browse_project)
+        self.browse_btn1 = ttk.Button(
+            row,
+            text="انتخاب پوشه",
+            style="Secondary.TButton",
+            command=self._browse_project,
+        )
         self.browse_btn1.pack(side=tk.LEFT, padx=(8, 0))
 
         # --- مسیر خروجی ---
-        lbl2 = tk.Label(inner, text="مسیر فایل خروجی",
-                        font=(FONT_UI, 9, "bold"), anchor=tk.W)
+        lbl2 = tk.Label(
+            inner, text="مسیر فایل خروجی", font=(FONT_UI, 9, "bold"), anchor=tk.W
+        )
         lbl2._role = "card_title"
         lbl2.pack(fill=tk.X, pady=(12, 4))
 
-        row2 = tk.Frame(inner); row2._role = "card"
+        row2 = tk.Frame(inner)
+        row2._role = "card"
         row2.pack(fill=tk.X)
         self.output_var = tk.StringVar()
-        self.output_entry = ttk.Entry(row2, textvariable=self.output_var,
-                                       font=(FONT_UI, 10))
+        self.output_entry = ttk.Entry(
+            row2, textvariable=self.output_var, font=(FONT_UI, 10)
+        )
         self.output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.browse_btn2 = ttk.Button(row2, text="ذخیره در...",
-                                       style="Secondary.TButton",
-                                       command=self._browse_output)
+        self.browse_btn2 = ttk.Button(
+            row2,
+            text="ذخیره در...",
+            style="Secondary.TButton",
+            command=self._browse_output,
+        )
         self.browse_btn2.pack(side=tk.LEFT, padx=(8, 0))
 
         hint = tk.Label(
             inner,
             text="به‌طور پیش‌فرض کنار پروژه ذخیره می‌شود. مسیر را می‌توانید تغییر دهید.",
-            font=(FONT_UI, 8), anchor=tk.W)
+            font=(FONT_UI, 8),
+            anchor=tk.W,
+        )
         hint._role = "hint"
         hint.pack(fill=tk.X, pady=(8, 0))
 
@@ -461,104 +515,135 @@ class SnapshotApp:
         card = self._make_card(parent)
         card.pack(fill=tk.X, pady=(0, 12))
 
-        inner = tk.Frame(card); inner._role = "card"
+        inner = tk.Frame(card)
+        inner._role = "card"
         inner.pack(fill=tk.X, padx=16, pady=14)
 
-        title = tk.Label(inner, text="تنظیمات ignore",
-                         font=(FONT_UI, 9, "bold"), anchor=tk.W)
+        title = tk.Label(
+            inner, text="تنظیمات ignore", font=(FONT_UI, 9, "bold"), anchor=tk.W
+        )
         title._role = "card_title"
         title.pack(fill=tk.X, pady=(0, 8))
 
         self.use_gitignore_var = tk.BooleanVar(value=True)
         cb = ttk.Checkbutton(
-            inner, variable=self.use_gitignore_var,
-            text="اعمال .gitignore ها (شامل زیرپوشه‌ها، سازگار با Git)")
+            inner,
+            variable=self.use_gitignore_var,
+            text="اعمال .gitignore ها (شامل زیرپوشه‌ها، سازگار با Git)",
+        )
         cb.pack(anchor=tk.W)
 
-        lbl = tk.Label(inner,
-                       text="الگوهای دستی (هر خط یک الگو، یا با کاما):",
-                       font=(FONT_UI, 9), anchor=tk.W)
+        lbl = tk.Label(
+            inner,
+            text="الگوهای دستی (هر خط یک الگو، یا با کاما):",
+            font=(FONT_UI, 9),
+            anchor=tk.W,
+        )
         lbl._role = "card_title"
         lbl.pack(fill=tk.X, pady=(12, 4))
 
         self.exclude_text = tk.Text(
-            inner, height=3, wrap=tk.WORD, font=(FONT_MONO, 10),
-            relief=tk.FLAT, borderwidth=0, padx=8, pady=6,
-            highlightthickness=1)
+            inner,
+            height=3,
+            wrap=tk.WORD,
+            font=(FONT_MONO, 10),
+            relief=tk.FLAT,
+            borderwidth=0,
+            padx=8,
+            pady=6,
+            highlightthickness=1,
+        )
         self.exclude_text._role = "text_input"
         self.exclude_text.pack(fill=tk.X)
 
         hint = tk.Label(
             inner,
             text="پشتیبانی: !negation   dir/   /anchored   **   ?   []   \\escape",
-            font=(FONT_UI, 8), anchor=tk.W)
+            font=(FONT_UI, 8),
+            anchor=tk.W,
+        )
         hint._role = "hint"
         hint.pack(fill=tk.X, pady=(6, 0))
 
     def _build_action_bar(self, parent):
-        bar = tk.Frame(parent); bar._role = "bg"
+        bar = tk.Frame(parent)
+        bar._role = "bg"
         bar.pack(fill=tk.X, pady=(0, 12))
 
         self.start_btn = ttk.Button(
-            bar, text="🚀  شروع اسنپ‌شات",
-            style="Primary.TButton", command=self._start)
+            bar, text="🚀  شروع اسنپ‌شات", style="Primary.TButton", command=self._start
+        )
         self.start_btn.pack(side=tk.LEFT)
 
-        status_box = tk.Frame(bar); status_box._role = "bg"
+        status_box = tk.Frame(bar)
+        status_box._role = "bg"
         status_box.pack(side=tk.LEFT, padx=16)
 
-        self.status_dot = tk.Label(status_box, text="●",
-                                    font=(FONT_UI, 12))
+        self.status_dot = tk.Label(status_box, text="●", font=(FONT_UI, 12))
         self.status_dot._role = "status_dot"
         self.status_dot.pack(side=tk.LEFT)
 
-        self.status_label = tk.Label(status_box, text="آماده",
-                                     font=(FONT_UI, 9))
+        self.status_label = tk.Label(status_box, text="آماده", font=(FONT_UI, 9))
         self.status_label._role = "status_text"
         self.status_label.pack(side=tk.LEFT, padx=(6, 0))
 
-        hint = tk.Label(bar, text="F5 برای اجرا  •  Ctrl+T تم  •  Esc خروج",
-                        font=(FONT_UI, 8))
+        hint = tk.Label(
+            bar, text="F5 برای اجرا  •  Ctrl+T تم  •  Esc خروج", font=(FONT_UI, 8)
+        )
         hint._role = "hint_bg"
         hint.pack(side=tk.RIGHT)
 
-        self.progress = ttk.Progressbar(parent, mode="indeterminate",
-                                         style="Accent.Horizontal.TProgressbar")
+        self.progress = ttk.Progressbar(
+            parent, mode="indeterminate", style="Accent.Horizontal.TProgressbar"
+        )
         self.progress.pack(fill=tk.X, pady=(0, 12))
 
     def _build_log_card(self, parent):
         card = self._make_card(parent)
         card.pack(fill=tk.BOTH, expand=True)
 
-        inner = tk.Frame(card); inner._role = "card"
+        inner = tk.Frame(card)
+        inner._role = "card"
         inner.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
 
-        head = tk.Frame(inner); head._role = "card"
+        head = tk.Frame(inner)
+        head._role = "card"
         head.pack(fill=tk.X, pady=(0, 6))
 
-        lbl = tk.Label(head, text="گزارش عملیات",
-                       font=(FONT_UI, 9, "bold"), anchor=tk.W)
+        lbl = tk.Label(
+            head, text="گزارش عملیات", font=(FONT_UI, 9, "bold"), anchor=tk.W
+        )
         lbl._role = "card_title"
         lbl.pack(side=tk.LEFT)
 
-        clear_btn = tk.Label(head, text="پاک کردن", font=(FONT_UI, 8),
-                              cursor="hand2")
+        clear_btn = tk.Label(head, text="پاک کردن", font=(FONT_UI, 8), cursor="hand2")
         clear_btn._role = "ghost_btn_small"
         clear_btn.pack(side=tk.RIGHT)
         clear_btn.bind("<Button-1>", lambda e: self.log_text.delete("1.0", tk.END))
 
-        text_frame = tk.Frame(inner); text_frame._role = "card"
+        text_frame = tk.Frame(inner)
+        text_frame._role = "card"
         text_frame.pack(fill=tk.BOTH, expand=True)
 
         self.log_text = tk.Text(
-            text_frame, wrap=tk.WORD, font=(FONT_MONO, 9),
-            relief=tk.FLAT, borderwidth=0, padx=10, pady=8,
-            highlightthickness=1, height=14)
+            text_frame,
+            wrap=tk.WORD,
+            font=(FONT_MONO, 9),
+            relief=tk.FLAT,
+            borderwidth=0,
+            padx=10,
+            pady=8,
+            highlightthickness=1,
+            height=14,
+        )
         self.log_text._role = "log"
 
-        self.log_scroll = ttk.Scrollbar(text_frame, orient=tk.VERTICAL,
-                                         command=self.log_text.yview,
-                                         style="Vertical.TScrollbar")
+        self.log_scroll = ttk.Scrollbar(
+            text_frame,
+            orient=tk.VERTICAL,
+            command=self.log_text.yview,
+            style="Vertical.TScrollbar",
+        )
         self.log_text.config(yscrollcommand=self.log_scroll.set)
         self.log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -611,18 +696,24 @@ class SnapshotApp:
             elif role == "status_text":
                 w.config(bg=c["bg"], fg=c["text"])
             elif role == "text_input":
-                w.config(bg=c["input_bg"], fg=c["text"],
-                         insertbackground=c["text"],
-                         highlightbackground=c["border"],
-                         highlightcolor=c["accent"],
-                         selectbackground=c["accent"],
-                         selectforeground=c["accent_fg"])
+                w.config(
+                    bg=c["input_bg"],
+                    fg=c["text"],
+                    insertbackground=c["text"],
+                    highlightbackground=c["border"],
+                    highlightcolor=c["accent"],
+                    selectbackground=c["accent"],
+                    selectforeground=c["accent_fg"],
+                )
             elif role == "log":
-                w.config(bg=c["log_bg"], fg=c["log_fg"],
-                         insertbackground=c["log_fg"],
-                         highlightbackground=c["border"],
-                         selectbackground=c["accent"],
-                         selectforeground=c["accent_fg"])
+                w.config(
+                    bg=c["log_bg"],
+                    fg=c["log_fg"],
+                    insertbackground=c["log_fg"],
+                    highlightbackground=c["border"],
+                    selectbackground=c["accent"],
+                    selectforeground=c["accent_fg"],
+                )
         except tk.TclError:
             pass
 
@@ -634,79 +725,98 @@ class SnapshotApp:
         except tk.TclError:
             pass
 
-        style.configure("TEntry",
-                        fieldbackground=c["input_bg"],
-                        foreground=c["text"],
-                        insertcolor=c["text"],
-                        bordercolor=c["border"],
-                        lightcolor=c["input_bg"],
-                        darkcolor=c["input_bg"],
-                        padding=6)
-        style.map("TEntry",
-                  bordercolor=[("focus", c["accent"])],
-                  lightcolor=[("focus", c["accent"])],
-                  darkcolor=[("focus", c["accent"])])
+        style.configure(
+            "TEntry",
+            fieldbackground=c["input_bg"],
+            foreground=c["text"],
+            insertcolor=c["text"],
+            bordercolor=c["border"],
+            lightcolor=c["input_bg"],
+            darkcolor=c["input_bg"],
+            padding=6,
+        )
+        style.map(
+            "TEntry",
+            bordercolor=[("focus", c["accent"])],
+            lightcolor=[("focus", c["accent"])],
+            darkcolor=[("focus", c["accent"])],
+        )
 
-        style.configure("Primary.TButton",
-                        background=c["accent"],
-                        foreground=c["accent_fg"],
-                        bordercolor=c["accent"],
-                        lightcolor=c["accent"],
-                        darkcolor=c["accent"],
-                        focuscolor=c["accent"],
-                        padding=(18, 9),
-                        font=(FONT_UI, 10, "bold"),
-                        relief="flat")
-        style.map("Primary.TButton",
-                  background=[("active", c["accent_hover"]),
-                              ("pressed", c["accent_hover"])],
-                  bordercolor=[("active", c["accent_hover"])],
-                  lightcolor=[("active", c["accent_hover"])],
-                  darkcolor=[("active", c["accent_hover"])])
+        style.configure(
+            "Primary.TButton",
+            background=c["accent"],
+            foreground=c["accent_fg"],
+            bordercolor=c["accent"],
+            lightcolor=c["accent"],
+            darkcolor=c["accent"],
+            focuscolor=c["accent"],
+            padding=(18, 9),
+            font=(FONT_UI, 10, "bold"),
+            relief="flat",
+        )
+        style.map(
+            "Primary.TButton",
+            background=[("active", c["accent_hover"]), ("pressed", c["accent_hover"])],
+            bordercolor=[("active", c["accent_hover"])],
+            lightcolor=[("active", c["accent_hover"])],
+            darkcolor=[("active", c["accent_hover"])],
+        )
 
-        style.configure("Secondary.TButton",
-                        background=c["card"],
-                        foreground=c["text"],
-                        bordercolor=c["border"],
-                        lightcolor=c["card"],
-                        darkcolor=c["card"],
-                        focuscolor=c["card"],
-                        padding=(12, 6),
-                        font=(FONT_UI, 9),
-                        relief="flat")
-        style.map("Secondary.TButton",
-                  background=[("active", c["input_bg"])],
-                  bordercolor=[("active", c["accent"])])
+        style.configure(
+            "Secondary.TButton",
+            background=c["card"],
+            foreground=c["text"],
+            bordercolor=c["border"],
+            lightcolor=c["card"],
+            darkcolor=c["card"],
+            focuscolor=c["card"],
+            padding=(12, 6),
+            font=(FONT_UI, 9),
+            relief="flat",
+        )
+        style.map(
+            "Secondary.TButton",
+            background=[("active", c["input_bg"])],
+            bordercolor=[("active", c["accent"])],
+        )
 
-        style.configure("TCheckbutton",
-                        background=c["card"],
-                        foreground=c["text"],
-                        focuscolor=c["card"],
-                        font=(FONT_UI, 9))
-        style.map("TCheckbutton",
-                  background=[("active", c["card"])])
+        style.configure(
+            "TCheckbutton",
+            background=c["card"],
+            foreground=c["text"],
+            focuscolor=c["card"],
+            font=(FONT_UI, 9),
+        )
+        style.map("TCheckbutton", background=[("active", c["card"])])
 
-        style.configure("Accent.Horizontal.TProgressbar",
-                        troughcolor=c["card"],
-                        background=c["accent"],
-                        bordercolor=c["border"],
-                        lightcolor=c["accent"],
-                        darkcolor=c["accent"],
-                        thickness=6)
+        style.configure(
+            "Accent.Horizontal.TProgressbar",
+            troughcolor=c["card"],
+            background=c["accent"],
+            bordercolor=c["border"],
+            lightcolor=c["accent"],
+            darkcolor=c["accent"],
+            thickness=6,
+        )
 
-        style.configure("Vertical.TScrollbar",
-                        background=c["scrollbar"],
-                        troughcolor=c["log_bg"],
-                        bordercolor=c["log_bg"],
-                        arrowcolor=c["muted"],
-                        lightcolor=c["scrollbar"],
-                        darkcolor=c["scrollbar"])
+        style.configure(
+            "Vertical.TScrollbar",
+            background=c["scrollbar"],
+            troughcolor=c["log_bg"],
+            bordercolor=c["log_bg"],
+            arrowcolor=c["muted"],
+            lightcolor=c["scrollbar"],
+            darkcolor=c["scrollbar"],
+        )
 
     def _update_log_tags(self):
         c = self.colors
-        self.log_text.config(bg=c["log_bg"], fg=c["log_fg"],
-                             insertbackground=c["log_fg"],
-                             highlightbackground=c["border"])
+        self.log_text.config(
+            bg=c["log_bg"],
+            fg=c["log_fg"],
+            insertbackground=c["log_fg"],
+            highlightbackground=c["border"],
+        )
         self.log_text.tag_configure("info", foreground=c["log_fg"])
         self.log_text.tag_configure("success", foreground=c["success"])
         self.log_text.tag_configure("warn", foreground=c["warn"])
@@ -734,7 +844,8 @@ class SnapshotApp:
             initialdir=initial,
             initialfile="project_snapshot.txt",
             defaultextension=".txt",
-            filetypes=[("متنی", "*.txt"), ("همه فایل‌ها", "*.*")])
+            filetypes=[("متنی", "*.txt"), ("همه فایل‌ها", "*.*")],
+        )
         if path:
             self.output_var.set(path)
 
@@ -777,8 +888,7 @@ class SnapshotApp:
             return
 
         raw = self.exclude_text.get("1.0", tk.END)
-        patterns = [p.strip() for p in raw.replace(",", "\n").split("\n")
-                    if p.strip()]
+        patterns = [p.strip() for p in raw.replace(",", "\n").split("\n") if p.strip()]
 
         self.running = True
         self.start_btn.config(state=tk.DISABLED)
@@ -794,7 +904,8 @@ class SnapshotApp:
                     include_gitignore=self.use_gitignore_var.get(),
                     extra_patterns=patterns,
                     output_file_path=output,
-                    log_func=self._log)
+                    log_func=self._log,
+                )
             except Exception as e:
                 self._log(f"❌ خطای غیرمنتظره: {e}", "error")
             finally:
