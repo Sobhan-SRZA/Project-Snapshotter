@@ -1,8 +1,8 @@
 """
-Project Snapshotter GUI — با تم روز و شب
-
+Project Snapshotter GUI
+دوزبانه (فارسی/انگلیسی) + تم روز/شب
 موتور .gitignore سازگار با Git (negation, anchoring, **, [], escape,
-nested .gitignore, first-prune semantics) + رابط گرافیکی مدرن.
+nested .gitignore, first-prune semantics).
 """
 
 import os
@@ -10,22 +10,60 @@ import re
 import sys
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog
 from typing import List, Optional
 
 # ============================================================
-# فونت‌ها و پالت رنگ
+# فونت‌ها
 # ============================================================
 
-if sys.platform.startswith("win"):
-    FONT_UI = "Segoe UI"
-    FONT_MONO = "Consolas"
-elif sys.platform == "darwin":
-    FONT_UI = "SF Pro Text"
-    FONT_MONO = "Menlo"
-else:
-    FONT_UI = "Ubuntu"
-    FONT_MONO = "Monospace"
+
+def pick_ui_font(root) -> str:
+    try:
+        families = set(tkfont.families(root))
+    except Exception:
+        families = set()
+    if sys.platform.startswith("win"):
+        candidates = ["Segoe UI", "Vazirmatn", "Tahoma", "Arial"]
+    elif sys.platform == "darwin":
+        candidates = ["SF Pro Text", "Vazirmatn", "Helvetica Neue", "Tahoma", "Arial"]
+    else:
+        candidates = [
+            "Vazirmatn",
+            "Ubuntu",
+            "Cantarell",
+            "DejaVu Sans",
+            "Tahoma",
+            "Arial",
+        ]
+    for f in candidates:
+        if f in families:
+            return f
+    return "TkDefaultFont"
+
+
+def pick_mono_font(root) -> str:
+    try:
+        families = set(tkfont.families(root))
+    except Exception:
+        families = set()
+    for f in [
+        "Cascadia Code",
+        "Consolas",
+        "Menlo",
+        "Monaco",
+        "DejaVu Sans Mono",
+        "Courier New",
+    ]:
+        if f in families:
+            return f
+    return "TkFixedFont"
+
+
+# ============================================================
+# پالت رنگ
+# ============================================================
 
 PALETTES = {
     "light": {
@@ -68,7 +106,6 @@ PALETTES = {
 
 
 def detect_system_theme() -> str:
-    """تشخیص تم سیستم در ویندوز (پیش‌فرض: light)."""
     try:
         if sys.platform.startswith("win"):
             import winreg
@@ -85,7 +122,101 @@ def detect_system_theme() -> str:
 
 
 # ============================================================
-# موتور .gitignore سازگار با Git
+# ترجمه‌ها
+# ============================================================
+
+STRINGS = {
+    "fa": {
+        "title": "📸  Project Snapshotter",
+        "subtitle": "اسنپ‌شات از فایل‌های متنی پروژه",
+        "theme_light": "☀️  حالت روز",
+        "theme_dark": "🌙  حالت شب",
+        "lang_btn": "🌐  English",
+        "project_path": "مسیر پروژه",
+        "output_path": "مسیر فایل خروجی",
+        "browse_folder": "انتخاب پوشه",
+        "save_in": "ذخیره در...",
+        "output_hint": "به‌طور پیش‌فرض کنار پروژه ذخیره می‌شود. مسیر را می‌توانید تغییر دهید.",
+        "ignore_settings": "تنظیمات ignore",
+        "use_gitignore": "اعمال .gitignore ها (شامل زیرپوشه‌ها، سازگار با Git)",
+        "manual_patterns": "الگوهای دستی (هر خط یک الگو، یا با کاما):",
+        "pattern_hint": "پشتیبانی: !negation   dir/   /anchored   **   ?   []   \\escape",
+        "start_btn": "🚀  شروع اسنپ‌شات",
+        "status_ready": "آماده",
+        "status_running": "در حال اجرا...",
+        "status_success": "با موفقیت انجام شد",
+        "status_error_project": "خطا در مسیر پروژه",
+        "status_error_output": "خطا در مسیر خروجی",
+        "status_finished_error": "پایان با خطا",
+        "shortcuts": "F5 اجرا  •  Ctrl+T تم  •  Ctrl+L زبان  •  Esc خروج",
+        "log_title": "گزارش عملیات",
+        "clear_btn": "پاک کردن",
+        "dlg_project": "انتخاب پوشه پروژه",
+        "dlg_output": "محل ذخیره خروجی",
+        "dlg_ft_text": "متنی",
+        "dlg_ft_all": "همه فایل‌ها",
+        "log_manual_added": "➕ {n} الگوی دستی اضافه شد.",
+        "log_start": "🚀 شروع پیمایش...",
+        "log_gitignore": "📄 {n} الگو از {path}",
+        "log_access_error": "⚠️ دسترسی به {path} ممکن نیست: {err}",
+        "log_progress": "⏳ {n} فایل پردازش شد...",
+        "log_read_error": "❌ خطا در {path}: {err}",
+        "log_unexpected": "❌ خطای غیرمنتظره: {err}",
+        "log_done": "✅ تمام شد! {n} فایل نوشته شد، {skipped} مورد رد شد.",
+        "log_output": "📁 خروجی: {path}",
+        "log_write_error": "❌ خطای بحرانی در نوشتن: {err}",
+        "log_invalid_project": "❌ مسیر پروژه معتبر نیست.",
+        "log_invalid_output": "❌ مسیر خروجی مشخص نشده.",
+        "log_internal_error": "❌ خطای داخلی: {err}",
+    },
+    "en": {
+        "title": "📸  Project Snapshotter",
+        "subtitle": "Snapshot of project text files",
+        "theme_light": "☀️  Light mode",
+        "theme_dark": "🌙  Dark mode",
+        "lang_btn": "🌐  فارسی",
+        "project_path": "Project path",
+        "output_path": "Output file path",
+        "browse_folder": "Browse folder",
+        "save_in": "Save as...",
+        "output_hint": "Saved next to the project by default. You can change the path.",
+        "ignore_settings": "Ignore settings",
+        "use_gitignore": "Apply .gitignore files (including subfolders, Git-compatible)",
+        "manual_patterns": "Manual patterns (one per line, or comma-separated):",
+        "pattern_hint": "Supported: !negation   dir/   /anchored   **   ?   []   \\escape",
+        "start_btn": "🚀  Start snapshot",
+        "status_ready": "Ready",
+        "status_running": "Running...",
+        "status_success": "Completed successfully",
+        "status_error_project": "Invalid project path",
+        "status_error_output": "Invalid output path",
+        "status_finished_error": "Finished with error",
+        "shortcuts": "F5 run  •  Ctrl+T theme  •  Ctrl+L language  •  Esc exit",
+        "log_title": "Activity log",
+        "clear_btn": "Clear",
+        "dlg_project": "Select project folder",
+        "dlg_output": "Save output as",
+        "dlg_ft_text": "Text",
+        "dlg_ft_all": "All files",
+        "log_manual_added": "➕ {n} manual patterns added.",
+        "log_start": "🚀 Starting traversal...",
+        "log_gitignore": "📄 {n} patterns from {path}",
+        "log_access_error": "⚠️ Cannot access {path}: {err}",
+        "log_progress": "⏳ {n} files processed...",
+        "log_read_error": "❌ Error in {path}: {err}",
+        "log_unexpected": "❌ Unexpected error: {err}",
+        "log_done": "✅ Done! {n} files written, {skipped} skipped.",
+        "log_output": "📁 Output: {path}",
+        "log_write_error": "❌ Critical write error: {err}",
+        "log_invalid_project": "❌ Invalid project path.",
+        "log_invalid_output": "❌ Output path not specified.",
+        "log_internal_error": "❌ Internal error: {err}",
+    },
+}
+
+
+# ============================================================
+# موتور gitignore
 # ============================================================
 
 
@@ -111,29 +242,24 @@ class GitIgnorePattern:
             p = p[1:]
         elif p.startswith("\\!") or p.startswith("\\#"):
             p = p[1:]
-
         p = self._rstrip_unescaped_spaces(p)
         if not p:
             self.valid = False
             return
-
         if p.endswith("/"):
             self.directory_only = True
             p = p[:-1]
             if not p:
                 self.valid = False
                 return
-
         if p.startswith("/"):
             self.anchored = True
             p = p[1:]
         elif "/" in p:
             self.anchored = True
-
         body = self._translate(p)
         if not self.anchored:
             body = "(?:.*/)?" + body
-
         try:
             self.regex = re.compile("^" + body + "$")
         except re.error:
@@ -230,10 +356,10 @@ class GitIgnoreMatcher:
     def __init__(self, rules: Optional[List[GitIgnorePattern]] = None):
         self.rules = list(rules) if rules else []
 
-    def copy(self) -> "GitIgnoreMatcher":
+    def copy(self):
         return GitIgnoreMatcher(self.rules)
 
-    def add(self, rules: List[GitIgnorePattern]):
+    def add(self, rules):
         self.rules.extend(rules)
 
     def is_ignored(self, rel_path: str, is_dir: bool) -> bool:
@@ -244,7 +370,7 @@ class GitIgnoreMatcher:
         return ignored
 
 
-def build_default_matcher() -> GitIgnoreMatcher:
+def build_default_matcher():
     defaults = [
         ".git/",
         "node_modules/",
@@ -265,7 +391,7 @@ def build_default_matcher() -> GitIgnoreMatcher:
 
 
 # ============================================================
-# منطق ساخت اسنپ‌شات
+# ساخت اسنپ‌شات
 # ============================================================
 
 
@@ -274,19 +400,22 @@ def create_snapshot(
     include_gitignore: bool,
     extra_patterns: List[str],
     output_file_path: str,
-    log_func=print,
+    log_func,
 ) -> bool:
+    """
+    log_func(key, kwargs_dict, tag)
+    """
     output_abs = os.path.abspath(output_file_path)
     base = build_default_matcher()
     manual = [r for r in (GitIgnorePattern(l) for l in extra_patterns) if r.valid]
     base.add(manual)
     if manual:
-        log_func(f"➕ {len(manual)} الگوی دستی اضافه شد.", "info")
+        log_func("log_manual_added", {"n": len(manual)}, "info")
 
     all_contents: List[str] = []
     stats = {"processed": 0, "skipped": 0}
 
-    log_func("🚀 شروع پیمایش...", "info")
+    log_func("log_start", {}, "info")
 
     def walk(dir_path: str, rel_dir: str, matcher: GitIgnoreMatcher):
         current = matcher
@@ -298,12 +427,12 @@ def create_snapshot(
                     current = matcher.copy()
                     current.add(rules)
                     rel_gi = f"{rel_dir}/.gitignore" if rel_dir else ".gitignore"
-                    log_func(f"📄 {len(rules)} الگو از {rel_gi}", "info")
+                    log_func("log_gitignore", {"n": len(rules), "path": rel_gi}, "info")
 
         try:
             entries = sorted(os.scandir(dir_path), key=lambda e: e.name)
         except (PermissionError, OSError) as e:
-            log_func(f"⚠️ دسترسی به {dir_path} ممکن نیست: {e}", "warn")
+            log_func("log_access_error", {"path": dir_path, "err": str(e)}, "warn")
             return
 
         for entry in entries:
@@ -332,36 +461,36 @@ def create_snapshot(
                     all_contents.append(f"{rel}\n```\n{content}\n```\n\n")
                     stats["processed"] += 1
                     if stats["processed"] % 50 == 0:
-                        log_func(f"⏳ {stats['processed']} فایل پردازش شد...", "info")
+                        log_func("log_progress", {"n": stats["processed"]}, "info")
                 except UnicodeDecodeError:
                     stats["skipped"] += 1
                 except (IOError, OSError) as e:
-                    log_func(f"❌ خطا در {rel}: {e}", "error")
+                    log_func("log_read_error", {"path": rel, "err": str(e)}, "error")
                     stats["skipped"] += 1
 
     try:
         walk(root_dir, "", base)
     except Exception as e:
-        log_func(f"❌ خطای غیرمنتظره: {e}", "error")
+        log_func("log_unexpected", {"err": str(e)}, "error")
         return False
 
     try:
         with open(output_file_path, "w", encoding="utf-8") as f:
             f.write("".join(all_contents))
         log_func(
-            f"✅ تمام شد! {stats['processed']} فایل نوشته شد، "
-            f"{stats['skipped']} مورد رد شد.",
+            "log_done",
+            {"n": stats["processed"], "skipped": stats["skipped"]},
             "success",
         )
-        log_func(f"📁 خروجی: {output_file_path}", "success")
+        log_func("log_output", {"path": output_file_path}, "success")
         return True
     except Exception as e:
-        log_func(f"❌ خطای بحرانی در نوشتن: {e}", "error")
+        log_func("log_write_error", {"err": str(e)}, "error")
         return False
 
 
 # ============================================================
-# رابط گرافیکی
+# اپلیکیشن
 # ============================================================
 
 
@@ -369,86 +498,113 @@ class SnapshotApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.theme = detect_system_theme()
+        self.lang = "fa"  # پیش‌فرض فارسی
         self.colors = PALETTES[self.theme]
         self.running = False
+        self._log_entries: List[tuple] = []
+        self._status_key = "status_ready"
+        self._status_state = "idle"
+
+        self.font_ui = pick_ui_font(root)
+        self.font_mono = pick_mono_font(root)
 
         self.root.title("Project Snapshotter")
-        self.root.geometry("960x880")
-        self.root.minsize(800, 720)
+        self.root.geometry("980x900")
+        self.root.minsize(820, 740)
 
         self._build_ui()
         self._apply_theme()
+        self._apply_language()
 
-        # میانبرهای کیبورد
         self.root.bind("<Control-t>", lambda e: self._toggle_theme())
+        self.root.bind("<Control-l>", lambda e: self._toggle_lang())
         self.root.bind("<F5>", lambda e: self._start())
         self.root.bind("<Control-Return>", lambda e: self._start())
         self.root.bind("<Escape>", lambda e: self.root.destroy())
 
-    # ---------- ساخت UI ----------
+    # --- helpers ---
+
+    def _t(self, key: str, **kwargs) -> str:
+        template = STRINGS[self.lang].get(key, key)
+        try:
+            return template.format(**kwargs) if kwargs else template
+        except (KeyError, IndexError):
+            return template
+
+    def _is_rtl(self) -> bool:
+        return self.lang == "fa"
+
+    def _font(self, size: int, weight: str = "normal"):
+        return (self.font_ui, size, weight)
+
+    # --- UI ---
 
     def _build_ui(self):
-        # هدر
+        # Header
         self.header = tk.Frame(self.root, height=64)
         self.header.pack(fill=tk.X)
         self.header._role = "header"
         self.header.pack_propagate(False)
 
-        title_box = tk.Frame(self.header)
-        title_box._role = "header"
-        title_box.pack(side=tk.LEFT, padx=20, pady=10)
+        self.title_box = tk.Frame(self.header)
+        self.title_box._role = "header"
+        self.title_box.pack(side=tk.LEFT, padx=20, pady=10)
 
-        self.title_lbl = tk.Label(
-            title_box, text="📸  Project Snapshotter", font=(FONT_UI, 15, "bold")
-        )
+        self.title_lbl = tk.Label(self.title_box, font=self._font(15, "bold"))
+        self.title_lbl._text_key = "title"
         self.title_lbl._role = "title"
         self.title_lbl.pack(anchor=tk.W)
 
-        self.subtitle_lbl = tk.Label(
-            title_box, text="اسنپ‌شات از فایل‌های متنی پروژه", font=(FONT_UI, 9)
-        )
+        self.subtitle_lbl = tk.Label(self.title_box, font=self._font(9))
+        self.subtitle_lbl._text_key = "subtitle"
         self.subtitle_lbl._role = "subtitle"
         self.subtitle_lbl.pack(anchor=tk.W)
 
-        # دکمه تم
         self.theme_btn = tk.Label(
-            self.header,
-            text=self._theme_btn_text(),
-            font=(FONT_UI, 10),
-            padx=14,
-            pady=6,
-            cursor="hand2",
+            self.header, font=self._font(10), padx=14, pady=6, cursor="hand2"
         )
         self.theme_btn._role = "ghost_btn"
-        self.theme_btn.pack(side=tk.RIGHT, padx=20)
+        self.theme_btn.pack(side=tk.RIGHT, padx=(0, 20))
         self.theme_btn.bind("<Button-1>", lambda e: self._toggle_theme())
 
-        # خط جداکننده زیر هدر
+        self.lang_btn = tk.Label(
+            self.header, font=self._font(10), padx=14, pady=6, cursor="hand2"
+        )
+        self.lang_btn._role = "ghost_btn"
+        self.lang_btn.pack(side=tk.RIGHT, padx=(0, 6))
+        self.lang_btn.bind("<Button-1>", lambda e: self._toggle_lang())
+
         self.header_line = tk.Frame(self.root, height=1)
         self.header_line._role = "separator"
         self.header_line.pack(fill=tk.X)
 
-        # بدنه
-        body = tk.Frame(self.root)
-        body._role = "bg"
-        body.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+        # Body
+        self.body = tk.Frame(self.root)
+        self.body._role = "bg"
+        self.body.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
 
-        # کارت مسیرها
-        self._build_paths_card(body)
-
-        # کارت تنظیمات
-        self._build_options_card(body)
-
-        # نوار اجرا
-        self._build_action_bar(body)
-
-        # کارت لاگ
-        self._build_log_card(body)
+        self._build_paths_card(self.body)
+        self._build_options_card(self.body)
+        self._build_action_bar(self.body)
+        self._build_log_card(self.body)
 
     def _make_card(self, parent) -> tk.Frame:
         card = tk.Frame(parent, highlightthickness=1)
         card._role = "card"
         return card
+
+    def _make_label(
+        self,
+        parent,
+        key: str,
+        size: int,
+        weight: str = "normal",
+        role: str = "card_title",
+    ) -> tk.Label:
+        lbl = tk.Label(parent, font=self._font(size, weight), anchor=tk.W)
+        lbl._text_key = key
+        lbl._role = role
+        return lbl
 
     def _build_paths_card(self, parent):
         card = self._make_card(parent)
@@ -458,32 +614,22 @@ class SnapshotApp:
         inner._role = "card"
         inner.pack(fill=tk.X, padx=16, pady=14)
 
-        # --- مسیر پروژه ---
-        lbl = tk.Label(inner, text="مسیر پروژه", font=(FONT_UI, 9, "bold"), anchor=tk.W)
-        lbl._role = "card_title"
-        lbl.pack(fill=tk.X, pady=(0, 4))
+        lbl1 = self._make_label(inner, "project_path", 9, "bold")
+        lbl1.pack(fill=tk.X, pady=(0, 4))
 
-        row = tk.Frame(inner)
-        row._role = "card"
-        row.pack(fill=tk.X)
+        row1 = tk.Frame(inner)
+        row1._role = "card"
+        row1.pack(fill=tk.X)
         self.project_var = tk.StringVar()
         self.project_entry = ttk.Entry(
-            row, textvariable=self.project_var, font=(FONT_UI, 10)
+            row1, textvariable=self.project_var, font=self._font(10)
         )
-        self.project_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.browse_btn1 = ttk.Button(
-            row,
-            text="انتخاب پوشه",
-            style="Secondary.TButton",
-            command=self._browse_project,
+            row1, style="Secondary.TButton", command=self._browse_project
         )
-        self.browse_btn1.pack(side=tk.LEFT, padx=(8, 0))
+        self.browse_btn1._text_key = "browse_folder"
 
-        # --- مسیر خروجی ---
-        lbl2 = tk.Label(
-            inner, text="مسیر فایل خروجی", font=(FONT_UI, 9, "bold"), anchor=tk.W
-        )
-        lbl2._role = "card_title"
+        lbl2 = self._make_label(inner, "output_path", 9, "bold")
         lbl2.pack(fill=tk.X, pady=(12, 4))
 
         row2 = tk.Frame(inner)
@@ -491,25 +637,20 @@ class SnapshotApp:
         row2.pack(fill=tk.X)
         self.output_var = tk.StringVar()
         self.output_entry = ttk.Entry(
-            row2, textvariable=self.output_var, font=(FONT_UI, 10)
+            row2, textvariable=self.output_var, font=self._font(10)
         )
-        self.output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.browse_btn2 = ttk.Button(
-            row2,
-            text="ذخیره در...",
-            style="Secondary.TButton",
-            command=self._browse_output,
+            row2, style="Secondary.TButton", command=self._browse_output
         )
-        self.browse_btn2.pack(side=tk.LEFT, padx=(8, 0))
+        self.browse_btn2._text_key = "save_in"
 
-        hint = tk.Label(
-            inner,
-            text="به‌طور پیش‌فرض کنار پروژه ذخیره می‌شود. مسیر را می‌توانید تغییر دهید.",
-            font=(FONT_UI, 8),
-            anchor=tk.W,
-        )
-        hint._role = "hint"
+        hint = self._make_label(inner, "output_hint", 8, role="hint")
         hint.pack(fill=tk.X, pady=(8, 0))
+
+        self._path_widgets = [
+            (self.project_entry, self.browse_btn1),
+            (self.output_entry, self.browse_btn2),
+        ]
 
     def _build_options_card(self, parent):
         card = self._make_card(parent)
@@ -519,34 +660,24 @@ class SnapshotApp:
         inner._role = "card"
         inner.pack(fill=tk.X, padx=16, pady=14)
 
-        title = tk.Label(
-            inner, text="تنظیمات ignore", font=(FONT_UI, 9, "bold"), anchor=tk.W
-        )
-        title._role = "card_title"
+        title = self._make_label(inner, "ignore_settings", 9, "bold")
         title.pack(fill=tk.X, pady=(0, 8))
 
         self.use_gitignore_var = tk.BooleanVar(value=True)
-        cb = ttk.Checkbutton(
-            inner,
-            variable=self.use_gitignore_var,
-            text="اعمال .gitignore ها (شامل زیرپوشه‌ها، سازگار با Git)",
+        self.gitignore_cb = ttk.Checkbutton(
+            inner, variable=self.use_gitignore_var, style="TCheckbutton"
         )
-        cb.pack(anchor=tk.W)
+        self.gitignore_cb._text_key = "use_gitignore"
+        self.gitignore_cb.pack(anchor=tk.W)
 
-        lbl = tk.Label(
-            inner,
-            text="الگوهای دستی (هر خط یک الگو، یا با کاما):",
-            font=(FONT_UI, 9),
-            anchor=tk.W,
-        )
-        lbl._role = "card_title"
+        lbl = self._make_label(inner, "manual_patterns", 9)
         lbl.pack(fill=tk.X, pady=(12, 4))
 
         self.exclude_text = tk.Text(
             inner,
             height=3,
             wrap=tk.WORD,
-            font=(FONT_MONO, 10),
+            font=self._font(10),
             relief=tk.FLAT,
             borderwidth=0,
             padx=8,
@@ -556,42 +687,31 @@ class SnapshotApp:
         self.exclude_text._role = "text_input"
         self.exclude_text.pack(fill=tk.X)
 
-        hint = tk.Label(
-            inner,
-            text="پشتیبانی: !negation   dir/   /anchored   **   ?   []   \\escape",
-            font=(FONT_UI, 8),
-            anchor=tk.W,
-        )
-        hint._role = "hint"
+        hint = self._make_label(inner, "pattern_hint", 8, role="hint")
         hint.pack(fill=tk.X, pady=(6, 0))
 
     def _build_action_bar(self, parent):
-        bar = tk.Frame(parent)
-        bar._role = "bg"
-        bar.pack(fill=tk.X, pady=(0, 12))
+        self.action_bar = tk.Frame(parent)
+        self.action_bar._role = "bg"
+        self.action_bar.pack(fill=tk.X, pady=(0, 12))
 
         self.start_btn = ttk.Button(
-            bar, text="🚀  شروع اسنپ‌شات", style="Primary.TButton", command=self._start
+            self.action_bar, style="Primary.TButton", command=self._start
         )
-        self.start_btn.pack(side=tk.LEFT)
+        self.start_btn._text_key = "start_btn"
 
-        status_box = tk.Frame(bar)
-        status_box._role = "bg"
-        status_box.pack(side=tk.LEFT, padx=16)
+        self.status_box = tk.Frame(self.action_bar)
+        self.status_box._role = "bg"
 
-        self.status_dot = tk.Label(status_box, text="●", font=(FONT_UI, 12))
+        self.status_dot = tk.Label(self.status_box, text="●", font=self._font(12))
         self.status_dot._role = "status_dot"
-        self.status_dot.pack(side=tk.LEFT)
 
-        self.status_label = tk.Label(status_box, text="آماده", font=(FONT_UI, 9))
+        self.status_label = tk.Label(self.status_box, font=self._font(9))
         self.status_label._role = "status_text"
-        self.status_label.pack(side=tk.LEFT, padx=(6, 0))
 
-        hint = tk.Label(
-            bar, text="F5 برای اجرا  •  Ctrl+T تم  •  Esc خروج", font=(FONT_UI, 8)
-        )
-        hint._role = "hint_bg"
-        hint.pack(side=tk.RIGHT)
+        self.shortcuts_lbl = tk.Label(self.action_bar, font=self._font(8))
+        self.shortcuts_lbl._text_key = "shortcuts"
+        self.shortcuts_lbl._role = "hint_bg"
 
         self.progress = ttk.Progressbar(
             parent, mode="indeterminate", style="Accent.Horizontal.TProgressbar"
@@ -606,20 +726,16 @@ class SnapshotApp:
         inner._role = "card"
         inner.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
 
-        head = tk.Frame(inner)
-        head._role = "card"
-        head.pack(fill=tk.X, pady=(0, 6))
+        self.log_header = tk.Frame(inner)
+        self.log_header._role = "card"
+        self.log_header.pack(fill=tk.X, pady=(0, 6))
 
-        lbl = tk.Label(
-            head, text="گزارش عملیات", font=(FONT_UI, 9, "bold"), anchor=tk.W
-        )
-        lbl._role = "card_title"
-        lbl.pack(side=tk.LEFT)
+        self.log_title_lbl = self._make_label(self.log_header, "log_title", 9, "bold")
 
-        clear_btn = tk.Label(head, text="پاک کردن", font=(FONT_UI, 8), cursor="hand2")
-        clear_btn._role = "ghost_btn_small"
-        clear_btn.pack(side=tk.RIGHT)
-        clear_btn.bind("<Button-1>", lambda e: self.log_text.delete("1.0", tk.END))
+        self.clear_btn = tk.Label(self.log_header, font=self._font(8), cursor="hand2")
+        self.clear_btn._text_key = "clear_btn"
+        self.clear_btn._role = "ghost_btn_small"
+        self.clear_btn.bind("<Button-1>", lambda e: self._clear_log())
 
         text_frame = tk.Frame(inner)
         text_frame._role = "card"
@@ -628,7 +744,7 @@ class SnapshotApp:
         self.log_text = tk.Text(
             text_frame,
             wrap=tk.WORD,
-            font=(FONT_MONO, 9),
+            font=(self.font_mono, 9),
             relief=tk.FLAT,
             borderwidth=0,
             padx=10,
@@ -648,7 +764,7 @@ class SnapshotApp:
         self.log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-    # ---------- اعمال تم ----------
+    # --- theme ---
 
     def _apply_theme(self):
         self.colors = PALETTES[self.theme]
@@ -657,7 +773,11 @@ class SnapshotApp:
         self._apply_ttk_styles()
         self._apply_roles_recursive(self.root)
         self._update_log_tags()
-        self.theme_btn.config(text=self._theme_btn_text())
+        self.theme_btn.config(
+            text=self._t("theme_light" if self.theme == "dark" else "theme_dark")
+        )
+        if hasattr(self, "_status_key"):
+            self._set_status_from_key(self._status_key, self._status_state)
 
     def _apply_roles_recursive(self, widget):
         role = getattr(widget, "_role", None)
@@ -692,7 +812,7 @@ class SnapshotApp:
             elif role == "ghost_btn_small":
                 w.config(bg=c["card"], fg=c["accent"])
             elif role == "status_dot":
-                w.config(bg=c["bg"], fg=c["muted"])
+                w.config(bg=c["bg"])
             elif role == "status_text":
                 w.config(bg=c["bg"], fg=c["text"])
             elif role == "text_input":
@@ -751,7 +871,7 @@ class SnapshotApp:
             darkcolor=c["accent"],
             focuscolor=c["accent"],
             padding=(18, 9),
-            font=(FONT_UI, 10, "bold"),
+            font=self._font(10, "bold"),
             relief="flat",
         )
         style.map(
@@ -771,7 +891,7 @@ class SnapshotApp:
             darkcolor=c["card"],
             focuscolor=c["card"],
             padding=(12, 6),
-            font=(FONT_UI, 9),
+            font=self._font(9),
             relief="flat",
         )
         style.map(
@@ -785,7 +905,7 @@ class SnapshotApp:
             background=c["card"],
             foreground=c["text"],
             focuscolor=c["card"],
-            font=(FONT_UI, 9),
+            font=self._font(9),
         )
         style.map("TCheckbutton", background=[("active", c["card"])])
 
@@ -822,17 +942,119 @@ class SnapshotApp:
         self.log_text.tag_configure("warn", foreground=c["warn"])
         self.log_text.tag_configure("error", foreground=c["error"])
 
-    def _theme_btn_text(self) -> str:
-        return "☀️  حالت روز" if self.theme == "dark" else "🌙  حالت شب"
+    # --- language ---
+
+    def _apply_language(self):
+        self._apply_texts_recursive(self.root)
+        self._apply_alignment_recursive(self.root)
+        self._relayout()
+        self._rerender_log()
+        self.theme_btn.config(
+            text=self._t("theme_light" if self.theme == "dark" else "theme_dark")
+        )
+        self.lang_btn.config(text=self._t("lang_btn"))
+        self._set_status_from_key(self._status_key, self._status_state)
+
+    def _apply_texts_recursive(self, widget):
+        key = getattr(widget, "_text_key", None)
+        if key:
+            try:
+                widget.config(text=self._t(key))
+            except tk.TclError:
+                pass
+        for child in widget.winfo_children():
+            self._apply_texts_recursive(child)
+
+    def _apply_alignment_recursive(self, widget):
+        rtl = self._is_rtl()
+        anchor = "e" if rtl else "w"
+        justify = "right" if rtl else "left"
+        if isinstance(widget, tk.Label):
+            try:
+                cur = str(widget.cget("anchor"))
+                if cur in ("w", "e"):
+                    widget.config(anchor=anchor)
+            except tk.TclError:
+                pass
+        elif isinstance(widget, (tk.Entry, ttk.Entry)):
+            try:
+                widget.config(justify=justify)
+            except tk.TclError:
+                pass
+        elif isinstance(widget, tk.Text):
+            try:
+                widget.config(justify=justify)
+            except tk.TclError:
+                pass
+        for child in widget.winfo_children():
+            self._apply_alignment_recursive(child)
+
+    def _relayout(self):
+        rtl = self._is_rtl()
+
+        # ردیف‌های مسیر
+        for entry, btn in self._path_widgets:
+            entry.pack_forget()
+            btn.pack_forget()
+            if rtl:
+                btn.pack(side=tk.LEFT, padx=(0, 8))
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            else:
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                btn.pack(side=tk.LEFT, padx=(8, 0))
+
+        # نوار اجرا
+        self.start_btn.pack_forget()
+        self.status_box.pack_forget()
+        self.shortcuts_lbl.pack_forget()
+        if rtl:
+            self.start_btn.pack(side=tk.RIGHT)
+            self.status_box.pack(side=tk.RIGHT, padx=16)
+            self.shortcuts_lbl.pack(side=tk.LEFT)
+        else:
+            self.start_btn.pack(side=tk.LEFT)
+            self.status_box.pack(side=tk.LEFT, padx=16)
+            self.shortcuts_lbl.pack(side=tk.RIGHT)
+
+        # هدر لاگ
+        self.log_title_lbl.pack_forget()
+        self.clear_btn.pack_forget()
+        if rtl:
+            self.clear_btn.pack(side=tk.LEFT)
+            self.log_title_lbl.pack(side=tk.RIGHT)
+        else:
+            self.log_title_lbl.pack(side=tk.LEFT)
+            self.clear_btn.pack(side=tk.RIGHT)
+
+        # وضعیت
+        self.status_dot.pack_forget()
+        self.status_label.pack_forget()
+        if rtl:
+            self.status_dot.pack(side=tk.RIGHT)
+            self.status_label.pack(side=tk.RIGHT, padx=(0, 6))
+        else:
+            self.status_dot.pack(side=tk.LEFT)
+            self.status_label.pack(side=tk.LEFT, padx=(6, 0))
+
+    def _rerender_log(self):
+        self.log_text.delete("1.0", tk.END)
+        for key, kwargs, tag in self._log_entries:
+            text = self._t(key, **kwargs)
+            self.log_text.insert(tk.END, text + "\n", tag)
+        self.log_text.see(tk.END)
 
     def _toggle_theme(self):
         self.theme = "dark" if self.theme == "light" else "light"
         self._apply_theme()
 
-    # ---------- انتخاب مسیرها ----------
+    def _toggle_lang(self):
+        self.lang = "en" if self.lang == "fa" else "fa"
+        self._apply_language()
+
+    # --- browse ---
 
     def _browse_project(self):
-        path = filedialog.askdirectory(title="انتخاب پوشه پروژه")
+        path = filedialog.askdirectory(title=self._t("dlg_project"))
         if path:
             self.project_var.set(path)
             self.output_var.set(os.path.join(path, "project_snapshot.txt"))
@@ -840,25 +1062,37 @@ class SnapshotApp:
     def _browse_output(self):
         initial = self.project_var.get().strip() or os.getcwd()
         path = filedialog.asksaveasfilename(
-            title="محل ذخیره خروجی",
+            title=self._t("dlg_output"),
             initialdir=initial,
             initialfile="project_snapshot.txt",
             defaultextension=".txt",
-            filetypes=[("متنی", "*.txt"), ("همه فایل‌ها", "*.*")],
+            filetypes=[
+                (self._t("dlg_ft_text"), "*.txt"),
+                (self._t("dlg_ft_all"), "*.*"),
+            ],
         )
         if path:
             self.output_var.set(path)
 
-    # ---------- لاگ و وضعیت ----------
+    # --- log / status ---
 
-    def _log(self, msg: str, tag: str = "info"):
-        self.root.after(0, self._append_log, msg, tag)
+    def _log(self, key, kwargs=None, tag="info"):
+        kwargs = kwargs or {}
+        self.root.after(0, self._append_log, key, dict(kwargs), tag)
 
-    def _append_log(self, msg: str, tag: str):
-        self.log_text.insert(tk.END, msg + "\n", tag)
+    def _append_log(self, key, kwargs, tag):
+        self._log_entries.append((key, kwargs, tag))
+        text = self._t(key, **kwargs)
+        self.log_text.insert(tk.END, text + "\n", tag)
         self.log_text.see(tk.END)
 
-    def _set_status(self, text: str, state: str = "idle"):
+    def _clear_log(self):
+        self._log_entries.clear()
+        self.log_text.delete("1.0", tk.END)
+
+    def _set_status_from_key(self, key: str, state: str = "idle"):
+        self._status_key = key
+        self._status_state = state
         c = self.colors
         color = {
             "idle": c["muted"],
@@ -866,10 +1100,13 @@ class SnapshotApp:
             "success": c["success"],
             "error": c["error"],
         }.get(state, c["muted"])
-        self.status_dot.config(fg=color)
-        self.status_label.config(text=text)
+        try:
+            self.status_dot.config(fg=color)
+            self.status_label.config(text=self._t(key))
+        except tk.TclError:
+            pass
 
-    # ---------- اجرا ----------
+    # --- run ---
 
     def _start(self):
         if self.running:
@@ -879,12 +1116,12 @@ class SnapshotApp:
         output = self.output_var.get().strip()
 
         if not project or not os.path.isdir(project):
-            self._log("❌ مسیر پروژه معتبر نیست.", "error")
-            self._set_status("خطا در مسیر پروژه", "error")
+            self._log("log_invalid_project", {}, "error")
+            self._set_status_from_key("status_error_project", "error")
             return
         if not output:
-            self._log("❌ مسیر خروجی مشخص نشده.", "error")
-            self._set_status("خطا در مسیر خروجی", "error")
+            self._log("log_invalid_output", {}, "error")
+            self._set_status_from_key("status_error_output", "error")
             return
 
         raw = self.exclude_text.get("1.0", tk.END)
@@ -892,9 +1129,9 @@ class SnapshotApp:
 
         self.running = True
         self.start_btn.config(state=tk.DISABLED)
-        self._set_status("در حال اجرا...", "running")
+        self._set_status_from_key("status_running", "running")
         self.progress.start(12)
-        self.log_text.delete("1.0", tk.END)
+        self._clear_log()
 
         def worker():
             ok = False
@@ -907,7 +1144,7 @@ class SnapshotApp:
                     log_func=self._log,
                 )
             except Exception as e:
-                self._log(f"❌ خطای غیرمنتظره: {e}", "error")
+                self._log("log_internal_error", {"err": str(e)}, "error")
             finally:
                 self.root.after(0, self._finish, ok)
 
@@ -918,9 +1155,9 @@ class SnapshotApp:
         self.start_btn.config(state=tk.NORMAL)
         self.progress.stop()
         if ok:
-            self._set_status("با موفقیت انجام شد", "success")
+            self._set_status_from_key("status_success", "success")
         else:
-            self._set_status("پایان با خطا", "error")
+            self._set_status_from_key("status_finished_error", "error")
 
 
 # ============================================================
@@ -929,5 +1166,5 @@ class SnapshotApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = SnapshotApp(root)
+    SnapshotApp(root)
     root.mainloop()
