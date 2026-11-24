@@ -1,247 +1,323 @@
 """
-Project Snapshotter Script
+Project Snapshotter GUI
+نسخه گرافیکی اسکریپت اسنپ‌شات پروژه
 
-This script recursively traverses a specified project directory, reads all text files,
-and concatenates their contents into a single .txt file. The output file
-includes the relative path of each file followed by its content, formatted
-with triple backticks.
-
-The script provides options to use the project's .gitignore file for exclusions
-or to manually enter exclusion patterns. The final output file is saved in
-the same directory where this script is executed.
+این برنامه پوشه پروژه را پیمایش کرده و محتوای تمام فایل‌های متنی را
+در یک فایل خروجی ترکیب می‌کند. مسیر خروجی به طور پیش‌فرض داخل پوشه پروژه
+انتخاب می‌شود و کاربر می‌تواند آن را تغییر دهد.
 """
 
-from typing import List, Set
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+from typing import Set
 import fnmatch
 import os
+import threading
+
+# استثناهای پیش‌فرض که همیشه اعمال می‌شوند
+DEFAULT_EXCLUSIONS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    "venv",
+    ".venv",
+    ".vscode",
+    ".idea",
+    "dist",
+    "build",
+    "*.pyc",
+    "*.tmp",
+    ".DS_Store",
+}
+
+
+# ---------------- منطق اصلی (بدون تغییر) ----------------
+
 
 def parse_gitignore(gitignore_path: str) -> Set[str]:
-    """
-    Parses a .gitignore file and returns a set of patterns.
-    
-    Args:
-        gitignore_path: The absolute path to the .gitignore file.
-        
-    Returns:
-        A set of strings, where each string is a gitignore pattern.
-        Lines that are empty or start with '#' are ignored.
-    """
+    """خواندن الگوها از فایل .gitignore"""
     patterns = set()
     if not os.path.isfile(gitignore_path):
         return patterns
-        
     try:
-        with open(gitignore_path, 'r', encoding='utf-8') as f:
+        with open(gitignore_path, "r", encoding="utf-8") as f:
             for line in f:
                 stripped_line = line.strip()
-                # Ignore comments and empty lines
-                if stripped_line and not stripped_line.startswith('#'):
+                if stripped_line and not stripped_line.startswith("#"):
                     patterns.add(stripped_line)
-
     except Exception as e:
-        print(f"Warning: Could not read .gitignore file at {gitignore_path}. Error: {e}")
-
+        print(
+            f"Warning: Could not read .gitignore file at {gitignore_path}. Error: {e}"
+        )
     return patterns
 
-def get_user_exclusions() -> Set[str]:
-    """
-    Prompts the user to manually enter exclusion patterns.
-    
-    Returns:
-        A set of strings, where each string is a user-provided pattern.
-        Input is split by commas.
-    """
-    print("\nPlease enter patterns to exclude (e.g., *.log, dist, build, *.tmp)")
-    user_input = input("Separate multiple patterns with a comma: ").strip()
-    
-    if not user_input:
-        return set()
-        
-    # Split by comma and strip whitespace from each pattern
-    patterns = {pattern.strip() for pattern in user_input.split(',')}
-    return patterns
 
-def create_project_snapshot(root_dir: str, exclude_patterns: Set[str], output_file_path: str):
+def create_project_snapshot(
+    root_dir: str, exclude_patterns: Set[str], output_file_path: str, log_func=print
+) -> bool:
     """
-    Generates the project snapshot text file.
-    
-    It walks through the root_dir, skipping excluded files/directories,
-    and writes the formatted content to the output_file_path.
-    
-    Args:
-        root_dir: The absolute path to the target project directory.
-        exclude_patterns: A set of patterns (fnmatch/gitignore style) to exclude.
-        output_file_path: The absolute path where the final .txt file will be saved.
+    ساخت فایل اسنپ‌شات پروژه.
+    log_func برای دریافت پیام‌ها استفاده می‌شود (برای GUI).
     """
-    
-    # Get just the filename of the output file to prevent it from being included
-    # if the script is run on the same directory it's in.
     output_filename = os.path.basename(output_file_path)
-    
     all_file_contents = []
+    processed_count = 0
+    skipped_count = 0
 
-    print("\nStarting project traversal...")
+    log_func("در حال پیمایش پوشه پروژه...")
 
-    # os.walk allows us to traverse the directory tree
-    # topdown=True lets us "prune" directories from the traversal,
-    # which is much more efficient than checking every file inside.
     for dirpath, dirnames, filenames in os.walk(root_dir, topdown=True):
-        
-        # --- Directory Pruning ---
-        # We modify dirnames *in-place* to prevent os.walk from descending
-        # into directories that match our exclusion patterns.
-        
-        # Create a list of directories to keep
-        dirs_to_keep = []
-        for d in dirnames:
-            # Check if the directory name itself matches any pattern
-            is_excluded = any(fnmatch.fnmatch(d, p) for p in exclude_patterns)
-            if not is_excluded:
-                dirs_to_keep.append(d)
-        
-        # This in-place modification is the key to pruning
+        # هرس پوشه‌های مستثنی (in-place)
+        dirs_to_keep = [
+            d
+            for d in dirnames
+            if not any(fnmatch.fnmatch(d, p) for p in exclude_patterns)
+        ]
         dirnames[:] = dirs_to_keep
 
-        # --- File Processing ---
         for filename in filenames:
-            
-            # 1. Skip the output file itself
             if filename == output_filename:
                 continue
-                
+
             file_path = os.path.join(dirpath, filename)
-            
-            # 2. Get the relative path for display and pattern matching
-            # We normalize to forward slashes (/) for consistency, just like in .gitignore
-            try:
-                relative_path = os.path.relpath(file_path, root_dir).replace(os.sep, '/')
 
+            try:
+                relative_path = os.path.relpath(file_path, root_dir).replace(
+                    os.sep, "/"
+                )
             except ValueError:
-                # This can happen on Windows if root_dir and file_path are on different drives
-                print(f"Skipping file on different drive: {file_path}")
+                log_func(f"⚠️ رد شد (درایو متفاوت): {file_path}")
+                skipped_count += 1
                 continue
 
-            # 3. Check if the file or its path matches any exclusion pattern
-            # We check both the simple filename (e.g., "test.log")
-            # and the relative path (e.g., "src/logs/test.log")
-            if any(fnmatch.fnmatch(filename, p) or fnmatch.fnmatch(relative_path, p) for p in exclude_patterns):
+            if any(
+                fnmatch.fnmatch(filename, p) or fnmatch.fnmatch(relative_path, p)
+                for p in exclude_patterns
+            ):
+                skipped_count += 1
                 continue
 
-            # 4. Try to read the file as text
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                
-                # Format the content as requested
                 formatted_block = f"{relative_path}\n```\n{content}\n```\n\n"
                 all_file_contents.append(formatted_block)
-                
+                processed_count += 1
             except UnicodeDecodeError:
-                # This catches binary files (images, executables, etc.)
-                print(f"Ignoring binary or non-UTF-8 file: {relative_path}")
-
+                log_func(f"⚠️ فایل باینری/غیر UTF-8: {relative_path}")
+                skipped_count += 1
             except IOError as e:
-                # This catches permission errors or other I/O issues
-                print(f"Error reading file {relative_path}: {e}")
-
+                log_func(f"❌ خطا در خواندن {relative_path}: {e}")
+                skipped_count += 1
             except Exception as e:
-                # Catch-all for other unexpected errors
-                print(f"Unexpected error processing file {relative_path}: {e}")
+                log_func(f"❌ خطای غیرمنتظره {relative_path}: {e}")
+                skipped_count += 1
 
-    # --- Writing the Output File ---
     try:
-        with open(output_file_path, 'w', encoding='utf-8') as f:
+        with open(output_file_path, "w", encoding="utf-8") as f:
             f.write("".join(all_file_contents))
-        
-        print("\n" + "="*50)
-        print("✅ Success! Project snapshot created.")
-        print(f"Output file location: {output_file_path}")
-        print("="*50)
-        
+        log_func(
+            f"✅ موفق! {processed_count} فایل پردازش شد، {skipped_count} فایل رد شد."
+        )
+        log_func(f"📁 فایل خروجی: {output_file_path}")
+        return True
     except Exception as e:
-        print(f"\n❌ Critical Error: Failed to write output file.")
-        print(f"Path: {output_file_path}")
-        print(f"Error: {e}")
+        log_func(f"❌ خطای بحرانی در نوشتن فایل خروجی: {e}")
+        return False
 
-# --- Main Execution Block ---
+
+# ---------------- رابط گرافیکی ----------------
+
+
+class SnapshotApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Project Snapshotter - اسنپ‌شات پروژه")
+        self.root.geometry("820x720")
+        self.root.minsize(700, 600)
+
+        self.running = False
+        self.build_ui()
+
+    # ----- ساخت رابط -----
+    def build_ui(self):
+        main = ttk.Frame(self.root, padding=12)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        # --- ردیف مسیر پروژه ---
+        row1 = ttk.Frame(main)
+        row1.pack(fill=tk.X, pady=4)
+        ttk.Label(row1, text="مسیر پروژه:", width=15).pack(side=tk.LEFT)
+        self.project_var = tk.StringVar()
+        ttk.Entry(row1, textvariable=self.project_var).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=5
+        )
+        ttk.Button(row1, text="انتخاب پوشه...", command=self.browse_project).pack(
+            side=tk.LEFT
+        )
+
+        # --- ردیف مسیر خروجی ---
+        row2 = ttk.Frame(main)
+        row2.pack(fill=tk.X, pady=4)
+        ttk.Label(row2, text="مسیر خروجی:", width=15).pack(side=tk.LEFT)
+        self.output_var = tk.StringVar()
+        ttk.Entry(row2, textvariable=self.output_var).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, padx=5
+        )
+        ttk.Button(row2, text="ذخیره در...", command=self.browse_output).pack(
+            side=tk.LEFT
+        )
+
+        # --- گزینه‌های استثنا ---
+        options = ttk.LabelFrame(main, text="تنظیمات استثنا", padding=8)
+        options.pack(fill=tk.X, pady=8)
+
+        self.use_gitignore_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            options,
+            text="استفاده از قوانین .gitignore (در صورت وجود)",
+            variable=self.use_gitignore_var,
+        ).pack(anchor=tk.W)
+
+        ttk.Label(options, text="الگوهای دستی (با کاما یا خط جدید جدا کنید):").pack(
+            anchor=tk.W, pady=(8, 2)
+        )
+        self.exclude_text = tk.Text(options, height=3, wrap=tk.WORD)
+        self.exclude_text.pack(fill=tk.X)
+
+        ttk.Label(options, text="استثناهای پیش‌فرض (همیشه اعمال می‌شوند):").pack(
+            anchor=tk.W, pady=(8, 2)
+        )
+        default_display = tk.Text(
+            options, height=3, wrap=tk.WORD, background="#f0f0f0", state=tk.DISABLED
+        )
+        default_display.pack(fill=tk.X)
+        default_display.config(state=tk.NORMAL)
+        default_display.insert(tk.END, ", ".join(sorted(DEFAULT_EXCLUSIONS)))
+        default_display.config(state=tk.DISABLED)
+
+        # --- دکمه شروع و Progress ---
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill=tk.X, pady=10)
+        self.start_btn = ttk.Button(
+            btn_frame, text="🚀 شروع ساخت اسنپ‌شات", command=self.start_snapshot
+        )
+        self.start_btn.pack(side=tk.LEFT)
+        self.status_var = tk.StringVar(value="آماده")
+        ttk.Label(btn_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=12)
+
+        self.progress = ttk.Progressbar(main, mode="indeterminate")
+        self.progress.pack(fill=tk.X, pady=(0, 8))
+
+        # --- ناحیه لاگ ---
+        log_frame = ttk.LabelFrame(main, text="گزارش عملیات", padding=6)
+        log_frame.pack(fill=tk.BOTH, expand=True)
+        self.log_text = scrolledtext.ScrolledText(
+            log_frame, height=14, wrap=tk.WORD, state=tk.NORMAL
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    # ----- انتخاب مسیرها -----
+    def browse_project(self):
+        path = filedialog.askdirectory(title="انتخاب پوشه اصلی پروژه")
+        if path:
+            self.project_var.set(path)
+            # پیش‌فرض: خروجی داخل همان پوشه پروژه
+            self.output_var.set(os.path.join(path, "project_snapshot.txt"))
+
+    def browse_output(self):
+        initial_dir = self.project_var.get().strip() or os.getcwd()
+        path = filedialog.asksaveasfilename(
+            title="محل ذخیره فایل خروجی",
+            initialdir=initial_dir,
+            initialfile="project_snapshot.txt",
+            defaultextension=".txt",
+            filetypes=[("فایل متنی", "*.txt"), ("همه فایل‌ها", "*.*")],
+        )
+        if path:
+            self.output_var.set(path)
+
+    # ----- لاگ thread-safe -----
+    def log(self, msg: str):
+        self.root.after(0, self._append_log, msg)
+
+    def _append_log(self, msg: str):
+        self.log_text.insert(tk.END, msg + "\n")
+        self.log_text.see(tk.END)
+
+    # ----- اجرا -----
+    def start_snapshot(self):
+        if self.running:
+            return
+
+        project = self.project_var.get().strip()
+        output = self.output_var.get().strip()
+
+        if not project or not os.path.isdir(project):
+            messagebox.showerror("خطا", "مسیر پروژه معتبر نیست.")
+            return
+        if not output:
+            messagebox.showerror("خطا", "مسیر خروجی مشخص نشده است.")
+            return
+
+        # ساخت مجموعه استثناها
+        exclude = set(DEFAULT_EXCLUSIONS)
+
+        # ۱) از gitignore
+        if self.use_gitignore_var.get():
+            gi = os.path.join(project, ".gitignore")
+            if os.path.isfile(gi):
+                patterns = parse_gitignore(gi)
+                exclude.update(patterns)
+                self.log(f"📄 {len(patterns)} الگو از .gitignore بارگذاری شد.")
+            else:
+                self.log("ℹ️ فایل .gitignore یافت نشد.")
+
+        # ۲) الگوهای دستی
+        manual = self.exclude_text.get("1.0", tk.END).strip()
+        if manual:
+            # هم کاما و هم خط جدید را جداکننده در نظر می‌گیریم
+            for p in manual.replace("\n", ",").split(","):
+                p = p.strip()
+                if p:
+                    exclude.add(p)
+            self.log(f"➕ الگوهای دستی اضافه شد (مجموع: {len(exclude)} الگو).")
+
+        # قفل کردن UI
+        self.running = True
+        self.start_btn.config(state=tk.DISABLED)
+        self.status_var.set("در حال اجرا...")
+        self.progress.start(12)
+        self.log_text.delete("1.0", tk.END)
+
+        # اجرا در Thread جداگانه
+        def worker():
+            try:
+                create_project_snapshot(project, exclude, output, self.log)
+            finally:
+                self.root.after(0, self.finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def finish(self):
+        self.running = False
+        self.start_btn.config(state=tk.NORMAL)
+        self.status_var.set("آماده")
+        self.progress.stop()
+
+
+# ----- اجرای برنامه -----
 if __name__ == "__main__":
-    
-    # --- 1. Determine Output Path ---
-    # The output file will be saved in the *same directory as this script*.
+    root = tk.Tk()
     try:
-        # '__file__' is the path to the currently running script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # استفاده از تم به‌روزتر در ویندوز/لینوکس
+        style = ttk.Style()
+        if "vista" in style.theme_names():
+            style.theme_use("vista")
+        elif "clam" in style.theme_names():
+            style.theme_use("clam")
+    except Exception:
+        pass
 
-    except NameError:
-        # Fallback if running in an environment where __file__ is not defined (e.g., some IDEs)
-        script_dir = os.getcwd()
-        print("Warning: Could not determine script directory, using current working directory for output.")
-        
-    output_filename = "project_snapshot.txt"
-    output_file_path = os.path.join(script_dir, output_filename)
-
-    # --- 2. Get Target Project Path ---
-    project_path = input("Please enter the path to the root directory of your project: ").strip()
-    
-    # Validate the path
-    if not os.path.isdir(project_path):
-        print(f"Error: The path provided is not a valid directory.")
-        print(f"Path: {project_path}")
-        exit(1) # Exit the script with an error code
-        
-    # Convert to absolute path for reliability
-    project_path = os.path.abspath(project_path)
-
-    # --- 3. Handle Exclusions ---
-    
-    # Start with a base set of common, high-noise directories
-    # These will be excluded regardless of user choice.
-    final_exclude_patterns = {
-        '.git', 
-        'node_modules', 
-        '__pycache__', 
-        'venv', 
-        '.venv', 
-        '.vscode', 
-        '.idea',
-        'dist',
-        'build',
-        '*.pyc',
-        '*.tmp',
-        '.DS_Store'
-    }
-
-    gitignore_path = os.path.join(project_path, ".gitignore")
-    
-    if os.path.isfile(gitignore_path):
-        # A .gitignore file exists, so we ask the user what to do
-        print(f"\nA .gitignore file was found at: {gitignore_path}")
-        use_gitignore = input("Do you want to add its rules to the exclusion list? (yes/no): ").strip().lower()
-        
-        if use_gitignore in ('yes', 'y'):
-            # User said yes, parse the file
-            print("Loading patterns from .gitignore...")
-            gitignore_patterns = parse_gitignore(gitignore_path)
-            final_exclude_patterns.update(gitignore_patterns)
-            print(f"Loaded {len(gitignore_patterns)} new patterns from .gitignore.")
-        
-        else:
-            # User said no, ask for manual input
-            print("Ignoring .gitignore file.")
-            user_patterns = get_user_exclusions()
-            final_exclude_patterns.update(user_patterns)
-            
-    else:
-        # No .gitignore file was found
-        print("\nNo .gitignore file found in the project root.")
-        add_manual = input("Do you want to manually add exclusion patterns? (yes/no): ").strip().lower()
-        
-        if add_manual in ('yes', 'y'):
-            user_patterns = get_user_exclusions()
-            final_exclude_patterns.update(user_patterns)
-            
-        else:
-            print("Proceeding with default exclusions only.")
-
-    # --- 4. Run the Snapshot ---
-    create_project_snapshot(project_path, final_exclude_patterns, output_file_path)
+    app = SnapshotApp(root)
+    root.mainloop()
