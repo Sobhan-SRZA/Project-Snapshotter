@@ -7,14 +7,14 @@ import os
 
 # ---------- App metadata ----------
 APP_NAME = "Project Snapshotter"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.0.0"
 
 # ---------- Project paths ----------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS_DIR = os.path.join(PROJECT_ROOT, "fonts")
 
 # ---------- Default settings ----------
-DEFAULT_LANG = "fa"  # "fa" | "en"
+DEFAULT_LANG = "en"  # "fa" | "en"
 DEFAULT_THEME = "system"  # "system" | "light" | "dark"
 DEFAULT_USE_GITIGNORE = True
 DEFAULT_OUTPUT_NAME = "project_snapshot.txt"
@@ -28,7 +28,7 @@ WINDOW_MIN_HEIGHT = 760
 # ---------- Author / credits ----------
 AUTHOR_NAME = "Sobhan-SRZA (mr.sinre)"
 AUTHOR_TEAM = "Persian Caesar Team"
-COPYRIGHT_YEAR = "2026"
+COPYRIGHT_YEAR = "2025-2026"
 GITHUB_URL = "https://github.com/Sobhan-SRZA"
 GITHUB_DISPLAY = "GitHub"
 WEBSITE_URL = "https://srza.ir"
