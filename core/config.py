@@ -25,6 +25,11 @@ WINDOW_HEIGHT = 920
 WINDOW_MIN_WIDTH = 840
 WINDOW_MIN_HEIGHT = 760
 
+# ---------- Font zoom ----------
+MIN_FONT_SCALE = 0.7
+MAX_FONT_SCALE = 2.0
+FONT_SCALE_STEP = 0.1
+
 # ---------- Author / credits ----------
 AUTHOR_NAME = "Sobhan-SRZA (mr.sinre)"
 AUTHOR_TEAM = "Persian Caesar Team"
