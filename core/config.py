@@ -7,7 +7,7 @@ import os
 
 # ---------- App metadata ----------
 APP_NAME = "Project Snapshotter"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 # ---------- Project paths ----------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
