@@ -146,3 +146,94 @@ Feel free to fork this project, suggest improvements, or open an issue. All cont
 ## License
 
 This project is released under the **MIT License**. See the [`LICENSE`](./LICENSE) file for details.
+
+
+### Notes:
+
+# ساخت و فعال‌سازی venv
+python -m venv build_env
+build_env\Scripts\activate    # ویندوز
+
+# ساخت فایل exe با پایتون
+# نصب PyInstaller و وابستگی‌های پروژه
+pip install pyinstaller cairosvg pillow
+
+فایل: Snapshotter.spec
+```
+# Snapshotter.spec
+# -*- mode: python ; coding: utf-8 -*-
+
+import os
+from PyInstaller.utils.hooks import collect_all
+
+# مسیر فونت‌ها
+fonts_dir = os.path.join(os.getcwd(), "fonts")
+datas = []
+if os.path.isdir(fonts_dir):
+    for f in os.listdir(fonts_dir):
+        if f.lower().endswith((".ttf", ".otf")):
+            datas.append((os.path.join(fonts_dir, f), "fonts"))
+
+# جمع‌آوری کامل tkinter (برای جلوگیری از خطای _tkinter)
+tk_datas, tk_binaries, tk_hiddenimports = collect_all("tkinter")
+
+# جمع‌آوری cairosvg (اگر نصب باشد)
+try:
+    cairo_datas, cairo_binaries, cairo_hiddenimports = collect_all("cairosvg")
+except Exception:
+    cairo_datas, cairo_binaries, cairo_hiddenimports = [], [], []
+
+# جمع‌آوری Pillow
+try:
+    pil_datas, pil_binaries, pil_hiddenimports = collect_all("PIL")
+except Exception:
+    pil_datas, pil_binaries, pil_hiddenimports = [], [], []
+
+a = Analysis(
+    ["main.py"],
+    pathex=[],
+    binaries=tk_binaries + cairo_binaries + pil_binaries,
+    datas=datas + tk_datas + cairo_datas + pil_datas,
+    hiddenimports=(
+        tk_hiddenimports
+        + cairo_hiddenimports
+        + pil_hiddenimports
+        + ["PIL._imaging"]  # کلید مخفی مهم برای Pillow
+    ),
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="ProjectSnapshotter",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,          # پنجره کنسول نمایش داده نشود
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=None,              # اگر آیکون .ico دارید، مسیرش را بدهید
+)
+```
+
+pyinstaller Snapshotter.spec --clean            
+
+# ساخت فایل exe با c
+pip install nuitka
+python -m nuitka --standalone --onefile --windows-disable-console --include-data-dir=fonts=fonts --include-package=cairosvg --include-package=PIL --enable-plugin=tk-inter main.py

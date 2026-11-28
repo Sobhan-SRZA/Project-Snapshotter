@@ -1,3 +1,6 @@
 /project_snapshot.txt
 /.*
 */__pycache__
+build*
+dist
+main.*
