@@ -1,4 +1,4 @@
-"""Snapshot engine — walks directories and writes a text report."""
+"""Snapshot engine — walks directories and writes a structured text report."""
 
 import os
 from typing import Optional
@@ -10,6 +10,14 @@ from core.gitignore_engine import (
 )
 
 
+def _format_bytes(num_bytes: int) -> str:
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes / (1024 * 1024):.2f} MB"
+
+
 def create_snapshot(
     root_dir,
     include_gitignore,
@@ -17,6 +25,7 @@ def create_snapshot(
     output_file_path,
     log_func,
     cancel_event=None,
+    on_stats=None,
 ) -> bool:
     output_abs = os.path.abspath(output_file_path)
     base = build_default_matcher()
@@ -26,8 +35,12 @@ def create_snapshot(
         log_func("log_manual_added", {"n": len(manual)}, "info")
 
     all_contents = []
-    stats = {"processed": 0, "skipped": 0}
+    stats = {"processed": 0, "skipped": 0, "bytes": 0}
     log_func("log_start", {}, "info")
+
+    def notify_stats():
+        if callable(on_stats):
+            on_stats(dict(stats))
 
     def walk(dir_path, rel_dir, matcher):
         if cancel_event and cancel_event.is_set():
@@ -58,12 +71,14 @@ def create_snapshot(
                 is_dir = entry.is_dir()
             except OSError:
                 stats["skipped"] += 1
+                notify_stats()
                 continue
 
             if not is_dir and os.path.abspath(full) == output_abs:
                 continue
             if current.is_ignored(rel, is_dir):
                 stats["skipped"] += 1
+                notify_stats()
                 continue
 
             if is_dir:
@@ -72,15 +87,20 @@ def create_snapshot(
                 try:
                     with open(full, "r", encoding="utf-8") as f:
                         content = f.read()
-                    all_contents.append(f"{rel}\n```\n{content}\n```\n\n")
+                    chunk = f"{rel}\n```\n{content}\n```\n\n"
+                    all_contents.append(chunk)
                     stats["processed"] += 1
+                    stats["bytes"] += len(chunk.encode("utf-8"))
+                    notify_stats()
                     if stats["processed"] % 50 == 0:
                         log_func("log_progress", {"n": stats["processed"]}, "info")
                 except UnicodeDecodeError:
                     stats["skipped"] += 1
+                    notify_stats()
                 except (IOError, OSError) as e:
                     log_func("log_read_error", {"path": rel, "err": str(e)}, "error")
                     stats["skipped"] += 1
+                    notify_stats()
 
     try:
         walk(root_dir, "", base)
@@ -93,11 +113,20 @@ def create_snapshot(
         return False
 
     try:
+        out_dir = os.path.dirname(output_abs)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        final_text = "".join(all_contents)
         with open(output_file_path, "w", encoding="utf-8") as f:
-            f.write("".join(all_contents))
+            f.write(final_text)
+        size_str = _format_bytes(len(final_text.encode("utf-8")))
         log_func(
             "log_done",
-            {"n": stats["processed"], "skipped": stats["skipped"]},
+            {
+                "n": stats["processed"],
+                "skipped": stats["skipped"],
+                "size": size_str,
+            },
             "success",
         )
         log_func("log_output", {"path": output_file_path}, "success")

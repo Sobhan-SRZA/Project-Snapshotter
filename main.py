@@ -1,16 +1,19 @@
-"""Project Snapshotter — entry point."""
+"""Entry point for Project Snapshotter."""
 
 import tkinter as tk
 
+import os
+from core.config import APP_NAME
 from core.fonts import FontManager
-from core.icons import has_svg_support
 from ui.app import SnapshotApp
 
 
 def main():
     root = tk.Tk()
-    if not has_svg_support():
-        print("[info] For best icon quality, install: pip install cairosvg pillow")
+    root.title(APP_NAME)
+    ico_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+    if os.path.exists(ico_path):
+        root.iconbitmap(ico_path)
 
     font_mgr = FontManager(root)
     font_mgr.scan_and_load()

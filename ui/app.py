@@ -1,4 +1,4 @@
-"""Tkinter UI for Project Snapshotter — redesigned."""
+"""Redesigned Tkinter UI for Project Snapshotter."""
 
 import os
 import sys
@@ -6,7 +6,6 @@ import time
 import threading
 import webbrowser
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import ttk, filedialog
 from typing import List, Optional, Tuple
 
@@ -35,9 +34,11 @@ from core.config import (
 from core.themes import PALETTES, resolve_theme
 from core.strings import STRINGS
 from core.fonts import FontManager
-from core.snapshot_engine import create_snapshot
+from core.snapshot_engine import create_snapshot, _format_bytes
 from core.icons import get_icon
 from ui.widgets import ScrollableFrame
+
+QUICK_PRESETS = ["*.log", "*.lock", "tests/", "docs/", "*.env*"]
 
 
 def _has_persian(text) -> bool:
@@ -45,11 +46,7 @@ def _has_persian(text) -> bool:
         return False
     for c in str(text):
         o = ord(c)
-        if 0x0600 <= o <= 0x06FF:
-            return True
-        if 0xFB50 <= o <= 0xFDFF:
-            return True
-        if 0xFE70 <= o <= 0xFEFF:
+        if 0x0600 <= o <= 0x06FF or 0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF:
             return True
     return False
 
@@ -67,12 +64,13 @@ class SnapshotApp:
         self._status_key = "status_ready"
         self._status_state = "idle"
         self._toast_widget = None
+        self._toast_after_id = None
         self.font_scale = 1.0
+        self._stats = {"processed": 0, "skipped": 0, "bytes": 0}
 
         self.font_en, self.font_fa = font_mgr.pick_ui_fonts()
         self.font_mono = font_mgr.pick_mono_font()
-
-        self._icon_cache: dict = {}  # keep PhotoImage refs alive
+        self._icon_cache: dict = {}
 
         self.root.title(APP_NAME)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -81,6 +79,7 @@ class SnapshotApp:
         self._build_ui()
         self._apply_theme()
         self._apply_language()
+        self._update_stats_bar()
         self._show_empty_log()
 
         self.root.bind("<Control-t>", lambda e: self._toggle_theme())
@@ -123,7 +122,6 @@ class SnapshotApp:
         return (self.font_mono, self._scaled(size))
 
     def _font(self, size, weight="normal"):
-        """Backward compat helper — uses current UI lang."""
         return self._font_lang(size, weight)
 
     # ---- icon helpers ----
@@ -131,9 +129,7 @@ class SnapshotApp:
         fg = fg or self.colors["text"]
         kind, value = get_icon(name, size=size, fg=fg)
         if kind == "image":
-            key = (name, size, fg)
-            self._icon_cache[key] = value
-            return kind, value
+            self._icon_cache[(name, size, fg)] = value
         return kind, value
 
     def _make_icon_label(self, parent, name, size=16, fg=None, **kw):
@@ -165,19 +161,23 @@ class SnapshotApp:
     # Build UI
     # ============================================================
     def _build_ui(self):
-        # Header
-        self.header = tk.Frame(self.root, height=68)
+        # Top bar
+        self.header = tk.Frame(self.root, height=72)
         self.header._role = "header"
         self.header.pack(fill=tk.X)
         self.header.pack_propagate(False)
 
         self.title_block = tk.Frame(self.header)
         self.title_block._role = "header"
-        self.title_block.pack(side=tk.LEFT, padx=20, pady=10)
+        self.title_block.pack(side=tk.LEFT, padx=20, pady=12)
 
-        self.logo_lbl = self._make_icon_label(self.title_block, "camera", size=22)
-        self.logo_lbl._role = "header"
-        self.logo_lbl.pack(side=tk.LEFT, padx=(0, 10))
+        self.logo_badge = tk.Frame(self.title_block, padx=8, pady=8)
+        self.logo_badge._role = "accent_badge"
+        self.logo_badge.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.logo_lbl = self._make_icon_label(self.logo_badge, "layers", size=20)
+        self.logo_lbl._role = "accent_badge"
+        self.logo_lbl.pack()
 
         text_block = tk.Frame(self.title_block)
         text_block._role = "header"
@@ -195,39 +195,48 @@ class SnapshotApp:
         self.subtitle_lbl._font_size = 9
         self.subtitle_lbl._font_weight = "normal"
         self.subtitle_lbl._role = "subtitle"
-        self.subtitle_lbl.pack(anchor=tk.W, pady=(1, 0))
+        self.subtitle_lbl.pack(anchor=tk.W, pady=(2, 0))
 
         self.actions = tk.Frame(self.header)
         self.actions._role = "header"
-        self.actions.pack(side=tk.RIGHT, padx=16)
+        self.actions.pack(side=tk.RIGHT, padx=18)
 
-        self.theme_btn = self._make_icon_label(self.actions, "moon", size=18)
+        self.theme_btn = self._make_icon_label(
+            self.actions, "moon", size=18, padx=6, pady=6
+        )
         self.theme_btn._role = "ghost_btn"
-        self.theme_btn.pack(side=tk.RIGHT, padx=(2, 0))
+        self.theme_btn.pack(side=tk.RIGHT, padx=(3, 0))
         self.theme_btn.bind("<Button-1>", lambda e: self._toggle_theme())
         self._attach_hover(self.theme_btn, "ghost_btn")
 
-        self.lang_btn = self._make_icon_label(self.actions, "globe", size=18)
+        self.lang_btn = self._make_icon_label(
+            self.actions, "globe", size=18, padx=6, pady=6
+        )
         self.lang_btn._role = "ghost_btn"
-        self.lang_btn.pack(side=tk.RIGHT, padx=(2, 0))
+        self.lang_btn.pack(side=tk.RIGHT, padx=(3, 0))
         self.lang_btn.bind("<Button-1>", lambda e: self._toggle_lang())
         self._attach_hover(self.lang_btn, "ghost_btn")
 
-        self._hsep(self.actions).pack(side=tk.RIGHT, padx=6)
+        self._hsep(self.actions).pack(side=tk.RIGHT, padx=8)
 
-        self.zoom_in_btn = self._make_icon_label(self.actions, "zoom-in", size=18)
+        self.zoom_in_btn = self._make_icon_label(
+            self.actions, "zoom-in", size=18, padx=6, pady=6
+        )
         self.zoom_in_btn._role = "ghost_btn"
         self.zoom_in_btn.pack(side=tk.RIGHT, padx=(2, 0))
         self.zoom_in_btn.bind("<Button-1>", lambda e: self._zoom_in())
         self._attach_hover(self.zoom_in_btn, "ghost_btn")
 
-        self.zoom_lbl = tk.Label(self.actions, font=self._font(9), width=4)
+        self.zoom_lbl = tk.Label(self.actions, font=self._font(9, "bold"), width=5)
         self.zoom_lbl._role = "zoom_label"
         self.zoom_lbl._font_size = 9
-        self.zoom_lbl._font_weight = "normal"
+        self.zoom_lbl._font_weight = "bold"
         self.zoom_lbl.pack(side=tk.RIGHT, padx=2)
+        self.zoom_lbl.bind("<Button-1>", lambda e: self._zoom_reset())
 
-        self.zoom_out_btn = self._make_icon_label(self.actions, "zoom-out", size=18)
+        self.zoom_out_btn = self._make_icon_label(
+            self.actions, "zoom-out", size=18, padx=6, pady=6
+        )
         self.zoom_out_btn._role = "ghost_btn"
         self.zoom_out_btn.pack(side=tk.RIGHT, padx=(2, 0))
         self.zoom_out_btn.bind("<Button-1>", lambda e: self._zoom_out())
@@ -237,10 +246,8 @@ class SnapshotApp:
         self.header_line._role = "separator"
         self.header_line.pack(fill=tk.X)
 
-        # Footer (packed before body so it stays at bottom)
         self._build_footer()
 
-        # Body (scrollable)
         self.body_scroll = ScrollableFrame(
             self.root, bg=self.colors["surface"], root=self.root
         )
@@ -250,15 +257,15 @@ class SnapshotApp:
 
         inner_wrap = tk.Frame(body)
         inner_wrap._role = "surface"
-        inner_wrap.pack(fill=tk.BOTH, expand=True, padx=16, pady=12)
+        inner_wrap.pack(fill=tk.BOTH, expand=True, padx=18, pady=14)
 
         self._build_paths_card(inner_wrap)
         self._build_ignore_card(inner_wrap)
         self._build_action_row(inner_wrap)
+        self._build_stats_row(inner_wrap)
         self._build_progress(inner_wrap)
         self._build_log_card(inner_wrap)
 
-        # Excluded widgets from outer scroll
         self.body_scroll.add_excluded(self.log_text)
         self.body_scroll.add_excluded(self.exclude_text)
         self._bind_log_wheel()
@@ -280,7 +287,7 @@ class SnapshotApp:
         w.bind("<Enter>", on_enter, add="+")
         w.bind("<Leave>", on_leave, add="+")
 
-    def _card(self, parent, pady_bottom=10) -> tk.Frame:
+    def _card(self, parent, pady_bottom=12) -> tk.Frame:
         card = tk.Frame(parent, highlightthickness=1)
         card._role = "card"
         card.pack(fill=tk.X, pady=(0, pady_bottom))
@@ -289,10 +296,10 @@ class SnapshotApp:
     def _section_header(self, parent, key, icon_name):
         f = tk.Frame(parent)
         f._role = "card"
-        f.pack(fill=tk.X, pady=(0, 10))
+        f.pack(fill=tk.X, pady=(0, 12))
         icon_lbl = self._make_icon_label(f, icon_name, size=16)
         icon_lbl._role = "card"
-        icon_lbl.pack(side=tk.LEFT, padx=(0, 6))
+        icon_lbl.pack(side=tk.LEFT, padx=(0, 8))
         lbl = tk.Label(f, font=self._font(11, "bold"), anchor=tk.W)
         lbl._text_key = key
         lbl._font_size = 11
@@ -305,16 +312,16 @@ class SnapshotApp:
         card = self._card(parent)
         inner = tk.Frame(card)
         inner._role = "card"
-        inner.pack(fill=tk.X, padx=16, pady=14)
+        inner.pack(fill=tk.X, padx=18, pady=15)
 
         self._section_header(inner, "section_paths", "folder")
 
-        self.lbl_project = tk.Label(inner, font=self._font(9), anchor=tk.W)
+        self.lbl_project = tk.Label(inner, font=self._font(9, "bold"), anchor=tk.W)
         self.lbl_project._text_key = "project_path"
         self.lbl_project._font_size = 9
-        self.lbl_project._font_weight = "normal"
+        self.lbl_project._font_weight = "bold"
         self.lbl_project._role = "field_label"
-        self.lbl_project.pack(fill=tk.X, pady=(0, 4))
+        self.lbl_project.pack(fill=tk.X, pady=(0, 5))
 
         self.row_project = tk.Frame(inner)
         self.row_project._role = "card"
@@ -332,12 +339,12 @@ class SnapshotApp:
         )
         self.browse_btn1._text_key = "browse"
 
-        self.lbl_output = tk.Label(inner, font=self._font(9), anchor=tk.W)
+        self.lbl_output = tk.Label(inner, font=self._font(9, "bold"), anchor=tk.W)
         self.lbl_output._text_key = "output_path"
         self.lbl_output._font_size = 9
-        self.lbl_output._font_weight = "normal"
+        self.lbl_output._font_weight = "bold"
         self.lbl_output._role = "field_label"
-        self.lbl_output.pack(fill=tk.X, pady=(10, 4))
+        self.lbl_output.pack(fill=tk.X, pady=(12, 5))
 
         self.row_output = tk.Frame(inner)
         self.row_output._role = "card"
@@ -364,23 +371,23 @@ class SnapshotApp:
         card = self._card(parent)
         inner = tk.Frame(card)
         inner._role = "card"
-        inner.pack(fill=tk.X, padx=16, pady=14)
+        inner.pack(fill=tk.X, padx=18, pady=15)
 
-        self._section_header(inner, "section_ignore", "shield")
+        self._section_header(inner, "section_ignore", "filter")
 
         self.use_gitignore_var = tk.BooleanVar(value=DEFAULT_USE_GITIGNORE)
         self.gitignore_cb = ttk.Checkbutton(
             inner, variable=self.use_gitignore_var, style="TCheckbutton"
         )
         self.gitignore_cb._text_key = "use_gitignore"
-        self.gitignore_cb.pack(anchor=tk.W, pady=(0, 10))
+        self.gitignore_cb.pack(anchor=tk.W, pady=(0, 12))
 
-        lbl = tk.Label(inner, font=self._font(9), anchor=tk.W)
+        lbl = tk.Label(inner, font=self._font(9, "bold"), anchor=tk.W)
         lbl._text_key = "manual_patterns"
         lbl._font_size = 9
-        lbl._font_weight = "normal"
+        lbl._font_weight = "bold"
         lbl._role = "field_label"
-        lbl.pack(fill=tk.X, pady=(0, 4))
+        lbl.pack(fill=tk.X, pady=(0, 5))
 
         self.exclude_text = tk.Text(
             inner,
@@ -390,18 +397,54 @@ class SnapshotApp:
             relief=tk.FLAT,
             borderwidth=0,
             padx=10,
-            pady=6,
+            pady=8,
             highlightthickness=1,
         )
         self.exclude_text._role = "text_input"
         self.exclude_text.pack(fill=tk.X)
+
+        # Quick preset chips row
+        self.presets_row = tk.Frame(inner)
+        self.presets_row._role = "card"
+        self.presets_row.pack(fill=tk.X, pady=(8, 2))
+
+        self.presets_lbl = tk.Label(self.presets_row, font=self._font(8, "bold"))
+        self.presets_lbl._text_key = "quick_presets"
+        self.presets_lbl._font_size = 8
+        self.presets_lbl._font_weight = "bold"
+        self.presets_lbl._role = "hint"
+        self.presets_lbl.pack(side=tk.LEFT, padx=(0, 6))
+
+        for pat in QUICK_PRESETS:
+            chip = tk.Label(
+                self.presets_row,
+                text=pat,
+                font=self._font_mono(8),
+                padx=8,
+                pady=2,
+                cursor="hand2",
+            )
+            chip._role = "chip"
+            chip.pack(side=tk.LEFT, padx=(0, 5))
+            chip.bind("<Button-1>", lambda _e, p=pat: self._add_preset(p))
 
         self._pattern_hint = tk.Label(inner, font=self._font(8), anchor=tk.W)
         self._pattern_hint._text_key = "pattern_hint"
         self._pattern_hint._font_size = 8
         self._pattern_hint._font_weight = "normal"
         self._pattern_hint._role = "hint"
-        self._pattern_hint.pack(fill=tk.X, pady=(4, 0))
+        self._pattern_hint.pack(fill=tk.X, pady=(6, 0))
+
+    def _add_preset(self, pattern: str):
+        current = self.exclude_text.get("1.0", tk.END).strip()
+        existing = [
+            x.strip() for x in current.replace(",", "\n").splitlines() if x.strip()
+        ]
+        if pattern not in existing:
+            new_text = f"{current}\n{pattern}" if current else pattern
+            self.exclude_text.delete("1.0", tk.END)
+            self.exclude_text.insert("1.0", new_text)
+        self._show_toast(self._t("toast_preset_added", p=pattern), "info")
 
     def _build_action_row(self, parent):
         self.action_row = tk.Frame(parent)
@@ -423,14 +466,19 @@ class SnapshotApp:
         )
         self.open_btn._text_key = "open_folder"
 
+        self.copy_btn = ttk.Button(
+            self.action_row, style="Secondary.TButton", command=self._copy_output_path
+        )
+        self.copy_btn._text_key = "copy_path"
+
         self.status_box = tk.Frame(self.action_row)
         self.status_box._role = "surface"
         self.status_dot = tk.Label(self.status_box, text="●", font=self._font(11))
         self.status_dot._role = "status_dot"
-        self.status_label = tk.Label(self.status_box, font=self._font(9))
+        self.status_label = tk.Label(self.status_box, font=self._font(9, "bold"))
         self.status_label._role = "status_text"
         self.status_label._font_size = 9
-        self.status_label._font_weight = "normal"
+        self.status_label._font_weight = "bold"
 
         self.hint_lbl = tk.Label(self.action_row, font=self._font(8))
         self.hint_lbl._text_key = "btn_hint"
@@ -438,11 +486,49 @@ class SnapshotApp:
         self.hint_lbl._font_weight = "normal"
         self.hint_lbl._role = "hint_surface"
 
+    def _build_stats_row(self, parent):
+        self.stats_bar = tk.Frame(parent, highlightthickness=1)
+        self.stats_bar._role = "card"
+        self.stats_bar.pack(fill=tk.X, pady=(0, 8))
+
+        inner = tk.Frame(self.stats_bar)
+        inner._role = "card"
+        inner.pack(fill=tk.X, padx=14, pady=7)
+
+        self.stat_processed_lbl = tk.Label(inner, font=self._font(8, "bold"))
+        self.stat_processed_lbl._role = "stat_success"
+        self.stat_processed_lbl._font_size = 8
+        self.stat_processed_lbl._font_weight = "bold"
+        self.stat_processed_lbl.pack(side=tk.LEFT, padx=(0, 18))
+
+        self.stat_skipped_lbl = tk.Label(inner, font=self._font(8, "bold"))
+        self.stat_skipped_lbl._role = "hint"
+        self.stat_skipped_lbl._font_size = 8
+        self.stat_skipped_lbl._font_weight = "bold"
+        self.stat_skipped_lbl.pack(side=tk.LEFT, padx=(0, 18))
+
+        self.stat_size_lbl = tk.Label(inner, font=self._font(8, "bold"))
+        self.stat_size_lbl._role = "stat_accent"
+        self.stat_size_lbl._font_size = 8
+        self.stat_size_lbl._font_weight = "bold"
+        self.stat_size_lbl.pack(side=tk.LEFT)
+
+    def _update_stats_bar(self):
+        self.stat_processed_lbl.config(
+            text=self._t("stat_processed", n=self._stats["processed"])
+        )
+        self.stat_skipped_lbl.config(
+            text=self._t("stat_skipped", n=self._stats["skipped"])
+        )
+        self.stat_size_lbl.config(
+            text=self._t("stat_size", size=_format_bytes(self._stats["bytes"]))
+        )
+
     def _build_progress(self, parent):
         self.progress = ttk.Progressbar(
             parent, mode="indeterminate", style="Accent.Horizontal.TProgressbar"
         )
-        self.progress.pack(fill=tk.X, pady=(0, 8))
+        self.progress.pack(fill=tk.X, pady=(0, 10))
 
     def _build_log_card(self, parent):
         card = tk.Frame(parent, highlightthickness=1)
@@ -451,15 +537,15 @@ class SnapshotApp:
 
         inner = tk.Frame(card)
         inner._role = "card"
-        inner.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+        inner.pack(fill=tk.BOTH, expand=True, padx=18, pady=15)
 
         head = tk.Frame(inner)
         head._role = "card"
-        head.pack(fill=tk.X, pady=(0, 8))
+        head.pack(fill=tk.X, pady=(0, 10))
 
-        icon_lbl = self._make_icon_label(head, "code", size=16)
+        icon_lbl = self._make_icon_label(head, "terminal", size=16)
         icon_lbl._role = "card"
-        icon_lbl.pack(side=tk.LEFT, padx=(0, 6))
+        icon_lbl.pack(side=tk.LEFT, padx=(0, 8))
 
         self.log_title = tk.Label(head, font=self._font(11, "bold"), anchor=tk.W)
         self.log_title._text_key = "log_title"
@@ -467,7 +553,7 @@ class SnapshotApp:
         self.log_title._font_weight = "bold"
         self.log_title._role = "card_title"
 
-        self.clear_btn = tk.Frame(head, cursor="hand2")
+        self.clear_btn = tk.Frame(head, cursor="hand2", padx=6, pady=2)
         self.clear_btn._role = "ghost_small"
         self.clear_btn_icon = self._make_icon_label(self.clear_btn, "trash", size=12)
         self.clear_btn_icon._role = "ghost_small"
@@ -478,12 +564,11 @@ class SnapshotApp:
         self.clear_btn_lbl._font_weight = "normal"
         self.clear_btn_lbl._role = "ghost_small"
         self.clear_btn_lbl.pack(side=tk.LEFT)
-        self.clear_btn.bind("<Button-1>", lambda e: self._clear_log())
-        self.clear_btn_lbl.bind("<Button-1>", lambda e: self._clear_log())
-        self.clear_btn_icon.bind("<Button-1>", lambda e: self._clear_log())
+        for w in (self.clear_btn, self.clear_btn_lbl, self.clear_btn_icon):
+            w.bind("<Button-1>", lambda e: self._clear_log())
         self._attach_hover_small(self.clear_btn)
 
-        text_container = tk.Frame(inner, height=240)
+        text_container = tk.Frame(inner, height=230)
         text_container._role = "card"
         text_container.pack(fill=tk.BOTH, expand=True)
         text_container.pack_propagate(False)
@@ -494,10 +579,10 @@ class SnapshotApp:
             font=self._font_mono(9),
             relief=tk.FLAT,
             borderwidth=0,
-            padx=10,
-            pady=8,
+            padx=12,
+            pady=10,
             highlightthickness=1,
-            height=12,
+            height=11,
         )
         self.log_text._role = "log"
 
@@ -538,7 +623,7 @@ class SnapshotApp:
         self.log_text.bind("<Button-5>", wheel_down)
 
     def _build_footer(self):
-        self.footer = tk.Frame(self.root, height=30)
+        self.footer = tk.Frame(self.root, height=32)
         self.footer._role = "footer"
         self.footer.pack(fill=tk.X, side=tk.BOTTOM)
         self.footer.pack_propagate(False)
@@ -548,15 +633,15 @@ class SnapshotApp:
         self.footer_hint._font_size = 8
         self.footer_hint._font_weight = "normal"
         self.footer_hint._role = "footer_text"
-        self.footer_hint.pack(side=tk.LEFT, padx=16)
+        self.footer_hint.pack(side=tk.LEFT, padx=18)
 
         self.version_lbl = tk.Label(
-            self.footer, text=f"v{APP_VERSION}", font=self._font(8)
+            self.footer, text=f"v{APP_VERSION}", font=self._font(8, "bold")
         )
         self.version_lbl._role = "footer_text"
         self.version_lbl._font_size = 8
-        self.version_lbl._font_weight = "normal"
-        self.version_lbl.pack(side=tk.RIGHT, padx=(0, 16))
+        self.version_lbl._font_weight = "bold"
+        self.version_lbl.pack(side=tk.RIGHT, padx=(0, 18))
 
         self.author_frame = tk.Frame(self.footer)
         self.author_frame._role = "footer"
@@ -573,13 +658,10 @@ class SnapshotApp:
         self.copyright_lbl.pack(side=tk.LEFT)
 
         self._footer_sep(self.author_frame)
-
         self.github_link = self._make_footer_link(
             self.author_frame, "github", GITHUB_DISPLAY, GITHUB_URL
         )
-
         self._footer_sep(self.author_frame)
-
         self.site_link = self._make_footer_link(
             self.author_frame, "external", WEBSITE_DISPLAY, WEBSITE_URL
         )
@@ -661,7 +743,9 @@ class SnapshotApp:
             self._hide_toast()
 
     def _refresh_header_icons(self):
-        self._refresh_icon(self.logo_lbl)
+        self._refresh_icon(self.logo_lbl, fg=self.colors["accent_fg"])
+        theme_icon = "sun" if self.theme == "dark" else "moon"
+        self.theme_btn._icon_name = theme_icon
         self._refresh_icon(self.theme_btn, fg=self.colors["text"])
         self._refresh_icon(self.lang_btn, fg=self.colors["text"])
         self._refresh_icon(self.zoom_in_btn, fg=self.colors["text"])
@@ -683,6 +767,7 @@ class SnapshotApp:
         mapping = {
             "surface": dict(bg=c["surface"]),
             "header": dict(bg=c["header"]),
+            "accent_badge": dict(bg=c["accent"]),
             "card": dict(bg=c["card"], highlightbackground=c["border"]),
             "separator": dict(bg=c["border"]),
             "separator_vert": dict(bg=c["border"]),
@@ -693,6 +778,9 @@ class SnapshotApp:
             "field_label": dict(bg=c["card"], fg=c["text_sub"]),
             "hint": dict(bg=c["card"], fg=c["muted"]),
             "hint_surface": dict(bg=c["surface"], fg=c["muted"]),
+            "chip": dict(bg=c["surface_hover"], fg=c["text_sub"]),
+            "stat_success": dict(bg=c["card"], fg=c["success"]),
+            "stat_accent": dict(bg=c["card"], fg=c["accent"]),
             "footer_text": dict(bg=c["surface"], fg=c["muted"]),
             "footer_link": dict(bg=c["surface"], fg=c["accent"]),
             "ghost_btn": dict(bg=c["header"], fg=c["text"]),
@@ -739,7 +827,7 @@ class SnapshotApp:
             bordercolor=c["input_border"],
             lightcolor=c["input"],
             darkcolor=c["input"],
-            padding=(10, 6),
+            padding=(10, 7),
             relief="flat",
             font=self._font_lang(10),
         )
@@ -767,7 +855,7 @@ class SnapshotApp:
             lightcolor=c["accent"],
             darkcolor=c["accent"],
             focuscolor=c["accent"],
-            padding=(16, 8),
+            padding=(18, 8),
             font=self._font_lang(10, "bold"),
             relief="flat",
         )
@@ -791,8 +879,8 @@ class SnapshotApp:
             lightcolor=c["card"],
             darkcolor=c["card"],
             focuscolor=c["card"],
-            padding=(12, 6),
-            font=self._font_lang(9),
+            padding=(12, 7),
+            font=self._font_lang(9, "bold"),
             relief="flat",
         )
         s.map(
@@ -817,7 +905,7 @@ class SnapshotApp:
             bordercolor=c["surface"],
             lightcolor=c["accent"],
             darkcolor=c["accent"],
-            thickness=3,
+            thickness=4,
         )
 
         s.configure(
@@ -859,6 +947,7 @@ class SnapshotApp:
         self._apply_ttk_styles()
         self._update_log_tags()
         self._relayout()
+        self._update_stats_bar()
         self._rerender_log()
         self._update_zoom_label()
         self._set_status(self._status_key, self._status_state)
@@ -881,9 +970,7 @@ class SnapshotApp:
             try:
                 if isinstance(w, tk.Label):
                     txt = w.cget("text")
-                    if txt and getattr(w, "_text_key", None):
-                        w.config(font=self._font_for(txt, size, weight))
-                    elif txt:
+                    if txt:
                         w.config(font=self._font_for(txt, size, weight))
                     elif getattr(w, "_icon_name", None):
                         self._refresh_icon(w)
@@ -904,12 +991,7 @@ class SnapshotApp:
                     w.config(anchor=anchor)
             except tk.TclError:
                 pass
-        elif isinstance(w, (tk.Entry, ttk.Entry)):
-            try:
-                w.config(justify=justify)
-            except tk.TclError:
-                pass
-        elif isinstance(w, tk.Text):
+        elif isinstance(w, (tk.Entry, ttk.Entry, tk.Text)):
             try:
                 w.config(justify=justify)
             except tk.TclError:
@@ -923,30 +1005,34 @@ class SnapshotApp:
             entry.pack_forget()
             btn.pack_forget()
             if rtl:
-                btn.pack(side=tk.LEFT, padx=(0, 6))
+                btn.pack(side=tk.LEFT, padx=(0, 8))
                 entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
             else:
                 entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-                btn.pack(side=tk.LEFT, padx=(6, 0))
+                btn.pack(side=tk.LEFT, padx=(8, 0))
 
         for w in (
             self.start_btn,
             self.cancel_btn,
             self.open_btn,
+            self.copy_btn,
             self.status_box,
             self.hint_lbl,
         ):
             w.pack_forget()
+
         if rtl:
             self.start_btn.pack(side=tk.RIGHT)
             self.cancel_btn.pack(side=tk.RIGHT, padx=(0, 6))
             self.open_btn.pack(side=tk.RIGHT, padx=(0, 6))
+            self.copy_btn.pack(side=tk.RIGHT, padx=(0, 6))
             self.status_box.pack(side=tk.RIGHT, padx=14)
             self.hint_lbl.pack(side=tk.LEFT)
         else:
             self.start_btn.pack(side=tk.LEFT)
             self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
             self.open_btn.pack(side=tk.LEFT, padx=(6, 0))
+            self.copy_btn.pack(side=tk.LEFT, padx=(6, 0))
             self.status_box.pack(side=tk.LEFT, padx=14)
             self.hint_lbl.pack(side=tk.RIGHT)
 
@@ -954,10 +1040,10 @@ class SnapshotApp:
         self.status_label.pack_forget()
         if rtl:
             self.status_dot.pack(side=tk.RIGHT)
-            self.status_label.pack(side=tk.RIGHT, padx=(0, 4))
+            self.status_label.pack(side=tk.RIGHT, padx=(0, 5))
         else:
             self.status_dot.pack(side=tk.LEFT)
-            self.status_label.pack(side=tk.LEFT, padx=(4, 0))
+            self.status_label.pack(side=tk.LEFT, padx=(5, 0))
 
         self.log_title.pack_forget()
         self.clear_btn.pack_forget()
@@ -971,9 +1057,15 @@ class SnapshotApp:
         self._sync_action_visibility()
 
     def _sync_action_visibility(self):
+        has_out = bool(self.output_var.get().strip())
         if self.running:
-            self.cancel_btn.pack()
             self.open_btn.pack_forget()
+            self.copy_btn.pack_forget()
+        else:
+            self.cancel_btn.pack_forget()
+            if not has_out:
+                self.open_btn.pack_forget()
+                self.copy_btn.pack_forget()
 
     def _rerender_log(self):
         self.log_text.config(state=tk.NORMAL)
@@ -1039,14 +1131,18 @@ class SnapshotApp:
         self.zoom_lbl.config(text=f"{pct}%")
 
     # ============================================================
-    # Browse / dialog
+    # Browse / Clipboard / Folder
     # ============================================================
     def _browse_project(self):
         path = filedialog.askdirectory(title=self._t("dlg_project"))
         if path:
             self.project_var.set(path)
-            self.output_var.set(os.path.join(path, DEFAULT_OUTPUT_NAME))
+            if not self.output_var.get().strip():
+                self.output_var.set(os.path.join(path, DEFAULT_OUTPUT_NAME))
+            else:
+                self.output_var.set(os.path.join(path, DEFAULT_OUTPUT_NAME))
             self._reset_validation()
+            self._relayout()
             self._show_toast(self._t("toast_saved"), "success")
 
     def _browse_output(self):
@@ -1064,6 +1160,15 @@ class SnapshotApp:
         if path:
             self.output_var.set(path)
             self._reset_validation()
+            self._relayout()
+
+    def _copy_output_path(self):
+        path = self.output_var.get().strip()
+        if not path:
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(path)
+        self._show_toast(self._t("toast_copied"), "success")
 
     def _open_output_folder(self):
         path = self.output_var.get().strip()
@@ -1083,11 +1188,18 @@ class SnapshotApp:
             pass
 
     # ============================================================
-    # Log / status / toast
+    # Log / Stats / Status / Toast
     # ============================================================
     def _log(self, key, kw=None, tag="info"):
         kw = kw or {}
         self.root.after(0, self._append_log, key, dict(kw), tag)
+
+    def _on_worker_stats(self, stats: dict):
+        self.root.after(0, self._apply_worker_stats, stats)
+
+    def _apply_worker_stats(self, stats: dict):
+        self._stats = stats
+        self._update_stats_bar()
 
     def _append_log(self, key, kw, tag):
         ts = time.time()
@@ -1098,6 +1210,8 @@ class SnapshotApp:
 
     def _clear_log(self):
         self._log_entries.clear()
+        self._stats = {"processed": 0, "skipped": 0, "bytes": 0}
+        self._update_stats_bar()
         self.log_text.delete("1.0", tk.END)
         self._update_empty_state()
 
@@ -1124,32 +1238,32 @@ class SnapshotApp:
             "success": c["success"],
             "error": c["danger"],
         }.get(kind, c["accent"])
-        if self._toast_widget is not None:
-            try:
-                self._toast_widget.destroy()
-            except tk.TclError:
-                pass
+        self._hide_toast()
         toast = tk.Label(
             self.root,
             text=text,
             font=self._font_for(text, 9, "bold"),
             bg=color,
             fg="#ffffff",
-            padx=16,
-            pady=6,
+            padx=18,
+            pady=7,
         )
-        toast.place(relx=0.5, y=76, anchor="n")
+        toast.place(relx=0.5, y=82, anchor="n")
         self._toast_widget = toast
-        self.root.after(2400, lambda: self._hide_toast())
+        self._toast_after_id = self.root.after(2400, self._hide_toast)
 
     def _hide_toast(self):
+        if self._toast_after_id is not None:
+            try:
+                self.root.after_cancel(self._toast_after_id)
+            except Exception:
+                pass
+            self._toast_after_id = None
         if self._toast_widget is not None:
             try:
                 self._toast_widget.destroy()
-
             except tk.TclError:
                 pass
-
             self._toast_widget = None
 
     # ============================================================
@@ -1159,21 +1273,18 @@ class SnapshotApp:
         try:
             self.project_entry.config(style="TEntry")
             self.output_entry.config(style="TEntry")
-
         except tk.TclError:
             pass
 
     def _mark_error(self, entry):
         try:
             entry.config(style="Error.TEntry")
-
         except tk.TclError:
             pass
 
     def _on_escape(self):
         if self.running:
             self._cancel()
-
         else:
             self.root.destroy()
 
@@ -1190,14 +1301,12 @@ class SnapshotApp:
             self._mark_error(self.project_entry)
             self._log("log_invalid_proj", {}, "error")
             self._set_status("status_error", "error")
-
             return
 
         if not output:
             self._mark_error(self.output_entry)
             self._log("log_invalid_out", {}, "error")
             self._set_status("status_error", "error")
-
             return
 
         raw = self.exclude_text.get("1.0", tk.END)
@@ -1205,15 +1314,16 @@ class SnapshotApp:
 
         self.running = True
         self.cancel_event = threading.Event()
+        self._stats = {"processed": 0, "skipped": 0, "bytes": 0}
+        self._update_stats_bar()
         self.start_btn.config(state=tk.DISABLED)
         self._set_status("status_running", "running")
         self.progress.start(12)
         self._clear_log()
+        self._relayout()
 
-        self.open_btn.pack_forget()
         if self._rtl():
             self.cancel_btn.pack(side=tk.RIGHT, padx=(0, 6))
-
         else:
             self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
 
@@ -1227,11 +1337,10 @@ class SnapshotApp:
                     output_file_path=output,
                     log_func=self._log,
                     cancel_event=self.cancel_event,
+                    on_stats=self._on_worker_stats,
                 )
-
             except Exception as e:
                 self._log("log_internal", {"err": str(e)}, "error")
-
             finally:
                 self.root.after(0, self._finish, ok)
 
@@ -1252,16 +1361,15 @@ class SnapshotApp:
 
         if cancelled:
             self._set_status("status_cancelled", "idle")
-
             return
 
         if ok:
             self._set_status("status_success", "success")
             if self._rtl():
                 self.open_btn.pack(side=tk.RIGHT, padx=(0, 6))
-
+                self.copy_btn.pack(side=tk.RIGHT, padx=(0, 6))
             else:
                 self.open_btn.pack(side=tk.LEFT, padx=(6, 0))
-
+                self.copy_btn.pack(side=tk.LEFT, padx=(6, 0))
         else:
             self._set_status("status_error", "error")
